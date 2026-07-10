@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>营销内容 Agent 工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Marketing Agent</p>
+          <h1>营销内容 Agent 工作台</h1>
+        </div>
+        <div class="scenario">
+          <label>
+            场景
+            <select id="scenario">
+              <option value="building_leasing">楼宇租赁</option>
+              <option value="restaurant_local">餐饮门店</option>
+              <option value="education_course">教育课程</option>
+            </select>
+          </label>
+          <label>
+            目标
+            <select id="goal">
+              <option value="lead_generation">线索获取</option>
+              <option value="sales_enablement">销售转发</option>
+              <option value="awareness">品牌曝光</option>
+            </select>
+          </label>
+        </div>
+        <button id="runButton" class="primary">运行完整流程</button>
+        <div class="status" id="status">等待运行</div>
+      </aside>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <div>
+            <p class="eyebrow">End-to-end run</p>
+            <h2>热点 + 知识库 + 营销目标</h2>
+          </div>
+          <div class="run-id" id="runId">未生成</div>
+        </div>
+
+        <section class="grid">
+          <article class="panel stage-list">
+            <h3>流程阶段</h3>
+            <ol id="stages">
+              <li>营销规划</li>
+              <li>人群画像</li>
+              <li>热点采集</li>
+              <li>知识库分析</li>
+              <li>选题策略</li>
+              <li>多平台文案</li>
+              <li>海报创意</li>
+              <li>发布包</li>
+              <li>效果复盘</li>
+            </ol>
+          </article>
+
+          <article class="panel">
+            <h3>推荐选题</h3>
+            <div id="topic" class="topic empty">运行后显示最高分选题</div>
+          </article>
+
+          <article class="panel copy-panel">
+            <h3>平台文案</h3>
+            <div class="tabs">
+              <button class="tab active" data-copy="xiaohongshu">小红书</button>
+              <button class="tab" data-copy="wechat_official_account">公众号</button>
+              <button class="tab" data-copy="moments">朋友圈</button>
+            </div>
+            <pre id="copyOutput">运行后显示文案</pre>
+          </article>
+
+          <article class="panel poster-panel">
+            <h3>海报预览</h3>
+            <div id="posterPreview" class="poster-preview">运行后生成可编辑海报 JSON 和预览图</div>
+          </article>
+
+          <article class="panel package-panel">
+            <h3>发布/导出包</h3>
+            <div id="packages" class="package-list empty">运行后显示公众号草稿、小红书发布包、朋友圈下载包</div>
+          </article>
+
+          <article class="panel json-panel">
+            <h3>Agent 结果 JSON</h3>
+            <pre id="jsonOutput">{}</pre>
+          </article>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
