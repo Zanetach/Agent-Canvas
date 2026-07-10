@@ -331,20 +331,19 @@ export function runMarketingCampaign(request = {}) {
 
 export function renderPosterSvg(design) {
   const get = (id) => design.layers.find((layer) => layer.id === id);
-  const title = escapeXml(get("title").text);
   const brand = escapeXml(get("brand").text);
-  const trend = escapeXml(get("trend").text);
   const subtitle = escapeXml(get("subtitle").text);
   const points = ["point_1", "point_2", "point_3"].map((key) => escapeXml(get(key).text));
   const contact = escapeXml(get("contact").text);
+  const titleLines = wrapCjk(get("title").text, 11).slice(0, 3).map(escapeXml);
+  const trendLines = wrapCjk(get("trend").text, 22).slice(0, 2).map(escapeXml);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1440" viewBox="0 0 1080 1440">
   <rect width="1080" height="1440" fill="#F7F3E8"/>
   <rect x="0" y="0" width="1080" height="16" fill="#12372A"/>
   <text x="72" y="102" fill="#12372A" font-size="30" font-family="Arial, sans-serif" font-weight="700">${brand}</text>
-  <text x="72" y="205" fill="#12372A" font-size="68" font-family="Arial, sans-serif" font-weight="800">${title.slice(0, 18)}</text>
-  <text x="72" y="288" fill="#12372A" font-size="68" font-family="Arial, sans-serif" font-weight="800">${title.slice(18)}</text>
-  <text x="72" y="365" fill="#5A5F58" font-size="32" font-family="Arial, sans-serif">${trend.slice(0, 34)}</text>
+  ${titleLines.map((line, index) => `<text x="72" y="${196 + index * 76}" fill="#12372A" font-size="64" font-family="Arial, sans-serif" font-weight="800">${line}</text>`).join("\n  ")}
+  ${trendLines.map((line, index) => `<text x="72" y="${388 + index * 42}" fill="#5A5F58" font-size="32" font-family="Arial, sans-serif">${line}</text>`).join("\n  ")}
   <rect x="72" y="430" width="936" height="420" rx="8" fill="#12372A"/>
   <circle cx="250" cy="610" r="92" fill="#E9C46A"/>
   <rect x="390" y="540" width="420" height="180" rx="8" fill="#F7F3E8" opacity="0.92"/>
@@ -371,4 +370,13 @@ function escapeXml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function wrapCjk(value, maxChars) {
+  const chars = [...String(value)];
+  const lines = [];
+  for (let index = 0; index < chars.length; index += maxChars) {
+    lines.push(chars.slice(index, index + maxChars).join(""));
+  }
+  return lines.length ? lines : [""];
 }
