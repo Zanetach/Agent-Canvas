@@ -59,7 +59,9 @@ function renderResult(result) {
   markStages(true);
   renderTopic(result.selected_topic);
   renderCopy();
-  posterPreview.innerHTML = result.creatives[0].preview_svg;
+  posterPreview.innerHTML = result.artifacts?.poster_png
+    ? `<img src="${escapeHtml(result.artifacts.poster_png)}" alt="营销海报" />`
+    : result.creatives[0].preview_svg;
   renderPackages(result.publish_packages);
   jsonOutput.textContent = JSON.stringify(result, null, 2);
 }
@@ -89,10 +91,21 @@ function renderPackages(records) {
           <div class="package-title">${escapeHtml(record.channel)}｜${escapeHtml(record.mode)}</div>
           <div>状态：${escapeHtml(record.status)}</div>
           <div>下一步：${escapeHtml(record.next_action ?? "可导出给运营发布")}</div>
+          ${packageLink(record.channel)}
         </div>
       `
     )
     .join("");
+}
+
+function packageLink(channel) {
+  const links = {
+    wechat_official_account: ["公众号草稿载荷", lastResult?.artifacts?.wechat_draft],
+    xiaohongshu: ["小红书发布包", lastResult?.artifacts?.xiaohongshu_package],
+    moments: ["朋友圈话术包", lastResult?.artifacts?.moments_package]
+  };
+  const [label, href] = links[channel] ?? [];
+  return href ? `<a class="artifact-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${label}</a>` : "";
 }
 
 function markStages(done) {

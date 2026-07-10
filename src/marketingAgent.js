@@ -110,6 +110,12 @@ export function profileAudience() {
 }
 
 export function collectTrends(request) {
+  if (Array.isArray(request.trend_items) && request.trend_items.length) {
+    return {
+      trends: applyTrendScope(request.trend_items.map(normalizeProvidedTrend), request),
+      diagnostics: { sources_used: [...new Set(request.trend_items.map((trend) => trend.source ?? "request"))], failed_sources: [] }
+    };
+  }
   const categories = request.trend_scope?.categories;
   const trends = categories?.length
     ? sampleTrends.filter((trend) => categories.includes(trend.category))
@@ -129,22 +135,49 @@ export async function collectTrendsLive(request) {
     failed_sources: []
   };
 
-  try {
-    const dailyHot = await fetchDailyHotSource("https://api-hot.imsyy.top/baidu", "dailyhot:baidu");
-    diagnostics.sources_used.push("dailyhot:baidu");
+  if (Array.isArray(request.trend_items) && request.trend_items.length) {
     return {
-      trends: filterMarketingSafeTrends(dailyHot).slice(0, request.trend_scope?.limit ?? 30),
+      trends: applyTrendScope(request.trend_items.map(normalizeProvidedTrend), request),
+      diagnostics: {
+        sources_used: [...new Set(request.trend_items.map((trend) => trend.source ?? "request"))],
+        failed_sources: [],
+        supplied_by_request: true
+      }
+    };
+  }
+
+  const apiBase = (request.trend_api_base ?? process.env.DAILYHOT_API_BASE_URL ?? "https://api-hot.imsyy.top").replace(/\/$/, "");
+  const sources = request.trend_scope?.sources ?? ["baidu", "weibo", "zhihu", "36kr"];
+  const sourceResults = await Promise.allSettled(
+    sources.map(async (source) => ({
+      source,
+      trends: await fetchDailyHotSource(`${apiBase}/${source}`, `dailyhot:${source}`)
+    }))
+  );
+
+  const aggregated = [];
+  sourceResults.forEach((result, index) => {
+    const source = sources[index];
+    if (result.status === "fulfilled") {
+      diagnostics.sources_used.push(`dailyhot:${source}`);
+      aggregated.push(...result.value.trends);
+      return;
+    }
+    diagnostics.failed_sources.push({ source: `dailyhot:${source}`, reason: result.reason.message });
+  });
+
+  if (aggregated.length) {
+    return {
+      trends: applyTrendScope(dedupeTrends(aggregated), request),
       diagnostics
     };
-  } catch (error) {
-    diagnostics.failed_sources.push({ source: "dailyhot:baidu", reason: error.message });
   }
 
   try {
     const baidu = await fetchBaiduHotPage();
     diagnostics.sources_used.push("baidu:hot-page");
     return {
-      trends: filterMarketingSafeTrends(baidu).slice(0, request.trend_scope?.limit ?? 30),
+      trends: applyTrendScope(baidu, request),
       diagnostics
     };
   } catch (error) {
@@ -162,7 +195,67 @@ export async function collectTrendsLive(request) {
   };
 }
 
+export function resolveKnowledgeBase(request = {}) {
+  if (request.knowledge_base) return request.knowledge_base;
+  if (Array.isArray(request.knowledge_documents) && request.knowledge_documents.length) {
+    return knowledgeBaseFromDocuments(request);
+  }
+  return sampleKnowledgeBase;
+}
+
+export function knowledgeBaseFromDocuments(request = {}) {
+  const documents = request.knowledge_documents ?? [];
+  const content = documents.map((document) => document.content ?? "").join("\n");
+  const facts = extractDocumentFacts(content);
+  const sellingPoints = extractListFact(content, ["卖点", "核心卖点", "优势", "项目亮点"]);
+  const proofPoints = extractListFact(content, ["证明材料", "证明", "依据", "实拍", "配套"]);
+  const entityName = facts.name ?? request.entity_name ?? "待确认项目";
+
+  return {
+    id: request.knowledge_base_id ?? id("kb_document"),
+    scenario: request.scenario ?? "building_leasing",
+    brandProfile: request.brand_profile ?? {
+      name: facts.brand ?? "营销内容助手",
+      tone: "专业、可信、克制",
+      colors: ["#12372A", "#E9C46A", "#F7F3E8"],
+      cta: facts.cta ?? "预约咨询"
+    },
+    entities: [
+      {
+        id: id("entity"),
+        type: "building",
+        name: entityName,
+        attributes: {
+          city: facts.city ?? "待确认城市",
+          business_area: facts.business_area ?? facts.address ?? "待确认商圈",
+          metro: facts.metro ?? "交通信息待确认",
+          rent_price: facts.rent_price ?? "租金待确认",
+          area_range: facts.area_range ?? "面积待确认",
+          contact: facts.contact ?? "联系方式待确认"
+        },
+        selling_points: sellingPoints.length ? sellingPoints : ["楼宇资料待补充"],
+        proof_points: proofPoints,
+        source_refs: documents.map((document) => ({ name: document.name ?? "未命名资料", type: document.type ?? "text" })),
+        assets: {
+          logo: "asset://brand-logo",
+          qrcode: "asset://consultant-qrcode",
+          images: ["asset://building-lobby"]
+        },
+        constraints: {
+          forbidden_claims: request.forbidden_claims ?? [],
+          must_include: facts.contact ? ["联系方式"] : []
+        }
+      }
+    ]
+  };
+}
+
 export function analyzeKnowledge(knowledgeBase = sampleKnowledgeBase) {
+  const entity = knowledgeBase.entities[0];
+  const missingFields = ["city", "business_area", "metro", "contact"].filter((field) => {
+    const value = entity?.attributes?.[field];
+    return !value || /待确认/.test(value);
+  });
   return {
     knowledge_entities: knowledgeBase.entities,
     brand_profile: knowledgeBase.brandProfile,
@@ -173,9 +266,10 @@ export function analyzeKnowledge(knowledgeBase = sampleKnowledgeBase) {
       default_channels: ["xiaohongshu", "wechat_official_account", "moments"],
       preferred_angles: ["commute", "city_event", "team_activity", "business_district"]
     },
-    asset_inventory: knowledgeBase.entities.flatMap((entity) => entity.assets.images),
-    missing_fields: [],
-    quality_warnings: []
+    asset_inventory: knowledgeBase.entities.flatMap((item) => item.assets?.images ?? []),
+    source_refs: knowledgeBase.entities.flatMap((item) => item.source_refs ?? []),
+    missing_fields: missingFields,
+    quality_warnings: missingFields.length ? [`以下事实未确认：${missingFields.join("、")}`] : []
   };
 }
 
@@ -352,7 +446,8 @@ export function runMarketingCampaign(request = {}) {
   const marketingBrief = planMarketing(request);
   const audiences = profileAudience(request);
   const trendResult = collectTrends(request);
-  const knowledge = analyzeKnowledge(request.knowledge_base ?? sampleKnowledgeBase);
+  const knowledgeBase = resolveKnowledgeBase(request);
+  const knowledge = analyzeKnowledge(knowledgeBase);
   const topics = generateTopics(trendResult.trends, knowledge, audiences);
   const selectedTopic = topics[0];
   const copySet = writeCopy(selectedTopic, knowledge);
@@ -369,7 +464,9 @@ export function runMarketingCampaign(request = {}) {
     trends: trendResult.trends,
     knowledge_summary: {
       entities: knowledge.knowledge_entities.map((entity) => ({ id: entity.id, type: entity.type, name: entity.name })),
-      brand_profile: knowledge.brand_profile
+      brand_profile: knowledge.brand_profile,
+      source_refs: knowledge.source_refs,
+      quality_warnings: knowledge.quality_warnings
     },
     topic_candidates: topics,
     selected_topic: selectedTopic,
@@ -391,10 +488,11 @@ export async function runMarketingCampaignLive(request = {}) {
   trace.push(traceStep("marketing-audience-profiler", "拆分决策人、影响者和转发人，明确痛点与证明材料", { scenario: marketingBrief.scenario }, audiences));
 
   const trendResult = await collectTrendsLive(request);
-  trace.push(traceStep("marketing-trend-collector", "尝试 DailyHotApi，失败后解析百度热搜页面；高风险热点过滤", request.trend_scope, trendResult));
+  trace.push(traceStep("marketing-trend-collector", "聚合 DailyHotApi 配置来源；不可用时回退百度热搜页面，并过滤高风险热点", request.trend_scope, trendResult));
 
-  const knowledge = analyzeKnowledge(request.knowledge_base ?? sampleKnowledgeBase);
-  trace.push(traceStep("marketing-knowledge-analyzer", "抽取楼宇实体、卖点、资产、约束和品牌语气", { knowledge_base_id: request.knowledge_base?.id ?? sampleKnowledgeBase.id }, knowledge));
+  const knowledgeBase = resolveKnowledgeBase(request);
+  const knowledge = analyzeKnowledge(knowledgeBase);
+  trace.push(traceStep("marketing-knowledge-analyzer", "抽取楼宇实体、卖点、资产、约束和品牌语气", { knowledge_base_id: knowledgeBase.id, source_document_count: request.knowledge_documents?.length ?? 0 }, knowledge));
 
   const topics = generateTopics(trendResult.trends, knowledge, audiences);
   const selectedTopic = topics[0];
@@ -422,7 +520,9 @@ export async function runMarketingCampaignLive(request = {}) {
     trend_diagnostics: trendResult.diagnostics,
     knowledge_summary: {
       entities: knowledge.knowledge_entities.map((entity) => ({ id: entity.id, type: entity.type, name: entity.name })),
-      brand_profile: knowledge.brand_profile
+      brand_profile: knowledge.brand_profile,
+      source_refs: knowledge.source_refs,
+      quality_warnings: knowledge.quality_warnings
     },
     topic_candidates: topics,
     selected_topic: selectedTopic,
@@ -561,6 +661,44 @@ function normalizeRawTrend(raw) {
   };
 }
 
+function normalizeProvidedTrend(item, index) {
+  if (item?.scores) {
+    return {
+      ...item,
+      id: item.id ?? `trend_${crypto.createHash("md5").update(`${item.source ?? "request"}:${item.title}`).digest("hex").slice(0, 8)}`,
+      category: item.category ?? classifyTrend(item.title, item.summary),
+      captured_at: item.captured_at ?? new Date().toISOString(),
+      risk_level: item.risk_level ?? (item.scores.risk >= 70 ? "high" : item.scores.risk >= 40 ? "medium" : "low")
+    };
+  }
+  return normalizeRawTrend({
+    title: item.title,
+    desc: item.summary ?? item.desc ?? "",
+    url: item.url ?? null,
+    hotScore: item.hot ?? item.hotScore ?? 100 - index,
+    source: item.source ?? "request",
+    index
+  });
+}
+
+function applyTrendScope(trends, request) {
+  const filteredByCategory = request.trend_scope?.categories?.length
+    ? trends.filter((trend) => request.trend_scope.categories.includes(trend.category))
+    : trends;
+  const scoped = filteredByCategory.length ? filteredByCategory : trends;
+  return filterMarketingSafeTrends(scoped).slice(0, request.trend_scope?.limit ?? 30);
+}
+
+function dedupeTrends(trends) {
+  const unique = new Map();
+  trends.forEach((trend) => {
+    const key = trend.title.replaceAll(/\s/g, "").toLowerCase();
+    const current = unique.get(key);
+    if (!current || trend.scores.heat > current.scores.heat) unique.set(key, trend);
+  });
+  return [...unique.values()];
+}
+
 function filterMarketingSafeTrends(trends) {
   const safe = trends.filter((trend) => trend.risk_level !== "high");
   const preferred = safe.filter((trend) => ["sports", "city", "business", "weather", "lifestyle"].includes(trend.category));
@@ -595,6 +733,40 @@ function normalizeHeat(score, index) {
   if (Number.isFinite(numeric) && numeric > 1000) return Math.max(50, Math.min(100, Math.round(numeric / 100000)));
   if (Number.isFinite(numeric)) return Math.max(50, Math.min(100, Math.round(numeric)));
   return Math.max(50, 95 - index);
+}
+
+function extractDocumentFacts(content) {
+  const rules = {
+    name: ["楼宇名称", "项目名称", "项目", "名称"],
+    brand: ["品牌", "品牌名称"],
+    city: ["城市"],
+    business_area: ["商圈", "商务区", "所在商圈"],
+    address: ["地址", "项目地址"],
+    metro: ["地铁", "交通", "轨交"],
+    rent_price: ["租金", "租赁价格", "报价"],
+    area_range: ["可租面积", "面积", "面积范围"],
+    contact: ["联系人", "联系方式", "咨询电话"],
+    cta: ["行动号召", "CTA"]
+  };
+  return Object.fromEntries(Object.entries(rules).map(([field, labels]) => [field, extractLabelValue(content, labels)]));
+}
+
+function extractLabelValue(content, labels) {
+  for (const label of labels) {
+    const match = String(content).match(new RegExp(`(?:^|\\n)\\s*(?:[-*]\\s*)?${label}\\s*[：:]\\s*([^\\n|]+)`, "m"));
+    if (match?.[1]) return match[1].trim();
+  }
+  return null;
+}
+
+function extractListFact(content, labels) {
+  const value = extractLabelValue(content, labels);
+  if (!value) return [];
+  return value
+    .split(/[、,，;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function traceStep(skill, action, input, output) {

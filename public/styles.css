@@ -251,6 +251,13 @@ pre {
   box-shadow: 0 18px 48px rgba(18, 55, 42, 0.18);
 }
 
+.poster-preview img {
+  width: min(100%, 360px);
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(18, 55, 42, 0.18);
+}
+
 .package-list {
   display: grid;
   gap: 12px;
@@ -267,6 +274,14 @@ pre {
 .package-title {
   font-weight: 800;
   color: var(--green);
+}
+
+.artifact-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .empty {

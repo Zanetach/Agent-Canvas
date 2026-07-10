@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "demo": "node scripts/run-demo.js",
+    "run": "node scripts/run-campaign.js",
     "start": "node server.js",
     "test": "node --test"
   },
