@@ -20,6 +20,7 @@ test("runs the full marketing agent pipeline", () => {
   assert.ok(result.topic_candidates.length >= 1);
   assert.ok(result.copies.channels.xiaohongshu.body.includes("绿洲中心"));
   assert.ok(result.creatives[0].design_json.layers.some((layer) => layer.id === "qrcode"));
+  assert.equal(result.creatives[0].design_json.layers.find((layer) => layer.id === "hero").type, "image");
   assert.ok(result.creatives[0].preview_svg.includes("<svg"));
   assert.ok(result.publish_packages.some((record) => record.channel === "xiaohongshu"));
   assert.equal(result.next_required_action, "review");

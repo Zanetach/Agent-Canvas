@@ -264,27 +264,31 @@ export function writeCopy(topic, knowledge) {
 
 export function generateCreative(topic, copySet, knowledge) {
   const entity = knowledge.knowledge_entities[0];
-  const title = copySet.channels.xiaohongshu.titles[0];
+  const title = copySet.channels.xiaohongshu.titles[0].replace("，公司也一样", "");
   const subtitle = entity.attributes.metro;
   const sellingPoints = entity.selling_points.slice(0, 3);
   const design = {
     design_id: id("creative"),
-    template_id: "event_hook_xhs_3_4",
+    template_id: "architectural_editorial_xhs_3_4",
     format: "xhs_3_4",
-    canvas: { width: 1080, height: 1440, background: "#F7F3E8" },
+    canvas: { width: 1080, height: 1440, background: "#10191D" },
     layers: [
-      { id: "brand", type: "text", text: knowledge.brand_profile.name, x: 72, y: 72, width: 500, fontSize: 30, locked: false },
-      { id: "building", type: "text", text: entity.name, x: 72, y: 1288, width: 500, fontSize: 40, locked: false },
-      { id: "title", type: "text", text: title, x: 72, y: 150, width: 900, fontSize: 68, locked: false },
-      { id: "trend", type: "text", text: `热点：${topic.trend_hook}`, x: 72, y: 340, width: 860, fontSize: 32, locked: false },
-      { id: "hero", type: "illustration", text: "city-office-hero", x: 72, y: 430, width: 936, height: 420, locked: false },
-      { id: "subtitle", type: "text", text: subtitle, x: 96, y: 900, width: 860, fontSize: 36, locked: false },
-      { id: "point_1", type: "text", text: `01 ${sellingPoints[0]}`, x: 96, y: 990, width: 760, fontSize: 34, locked: false },
-      { id: "point_2", type: "text", text: `02 ${sellingPoints[1]}`, x: 96, y: 1060, width: 760, fontSize: 34, locked: false },
-      { id: "point_3", type: "text", text: `03 ${sellingPoints[2]}`, x: 96, y: 1130, width: 760, fontSize: 34, locked: false },
-      { id: "qrcode", type: "qr", text: "扫码咨询", x: 804, y: 1210, width: 150, height: 150, locked: true },
-      { id: "contact", type: "text", text: entity.attributes.contact, x: 72, y: 1328, width: 700, fontSize: 28, locked: true }
-    ]
+      { id: "hero", type: "image", asset_ref: "office-building-dusk-v1.png", x: 0, y: 0, width: 1080, height: 1440, locked: false },
+      { id: "brand", type: "text", text: knowledge.brand_profile.name, x: 72, y: 76, width: 500, fontSize: 28, locked: false },
+      { id: "title", type: "text", text: title, x: 72, y: 160, width: 880, fontSize: 76, locked: false },
+      { id: "trend", type: "text", text: topic.trend_hook, x: 72, y: 360, width: 800, fontSize: 30, locked: false },
+      { id: "building", type: "text", text: entity.name, x: 72, y: 1050, width: 560, fontSize: 44, locked: false },
+      { id: "subtitle", type: "text", text: subtitle, x: 72, y: 1110, width: 700, fontSize: 30, locked: false },
+      { id: "point_1", type: "text", text: sellingPoints[0], x: 72, y: 1180, width: 700, fontSize: 30, locked: false },
+      { id: "point_2", type: "text", text: sellingPoints[1], x: 72, y: 1232, width: 700, fontSize: 30, locked: false },
+      { id: "point_3", type: "text", text: sellingPoints[2], x: 72, y: 1284, width: 700, fontSize: 30, locked: false },
+      { id: "qrcode", type: "qr", text: "扫码咨询", x: 826, y: 1134, width: 156, height: 156, locked: true },
+      { id: "contact", type: "text", text: entity.attributes.contact, x: 72, y: 1362, width: 700, fontSize: 27, locked: true }
+    ],
+    export_refs: {
+      preview: "poster.png",
+      editable_json: "poster-editable.json"
+    }
   };
 
   return {
@@ -438,56 +442,43 @@ export function renderPosterSvg(design) {
   const subtitle = escapeXml(get("subtitle").text);
   const points = ["point_1", "point_2", "point_3"].map((key) => escapeXml(get(key).text));
   const contact = escapeXml(get("contact").text);
-  const titleLines = wrapCjk(get("title").text, 12).slice(0, 2).map(escapeXml);
-  const trendLines = wrapCjk(get("trend").text, 20).slice(0, 2).map(escapeXml);
+  const titleLines = wrapCjk(get("title").text, 11).slice(0, 2).map(escapeXml);
+  const trendLines = wrapCjk(get("trend").text, 22).slice(0, 2).map(escapeXml);
+  const hero = get("hero");
+  const heroSrc = escapeXml(hero?.asset_ref ?? "office-building-dusk-v1.png");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1440" viewBox="0 0 1080 1440">
   <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#071B16"/>
-      <stop offset="58%" stop-color="#103B2E"/>
-      <stop offset="100%" stop-color="#E6C15A"/>
+    <linearGradient id="topShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#071218" stop-opacity="0.94"/>
+      <stop offset="54%" stop-color="#071218" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#071218" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="glass" x1="0" x2="1">
-      <stop offset="0%" stop-color="#F7F1DF" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#A9C8B7" stop-opacity="0.82"/>
+    <linearGradient id="bottomShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#071218" stop-opacity="0"/>
+      <stop offset="34%" stop-color="#071218" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#071218" stop-opacity="0.97"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#00150F" flood-opacity="0.32"/>
-    </filter>
   </defs>
-  <rect width="1080" height="1440" fill="url(#bg)"/>
-  <circle cx="930" cy="120" r="210" fill="#E6C15A" opacity="0.18"/>
-  <circle cx="150" cy="1260" r="260" fill="#F7F1DF" opacity="0.08"/>
-  <text x="72" y="92" fill="#E6C15A" font-size="28" font-family="Arial, sans-serif" font-weight="700">${brand}</text>
-  <text x="72" y="138" fill="#D7E5DA" font-size="22" font-family="Arial, sans-serif">热点营销内容 Agent 生成</text>
-  ${titleLines.map((line, index) => `<text x="72" y="${240 + index * 78}" fill="#FFF8E2" font-size="68" font-family="Arial, sans-serif" font-weight="900">${line}</text>`).join("\n  ")}
-  ${trendLines.map((line, index) => `<text x="72" y="${420 + index * 42}" fill="#D5DFD8" font-size="31" font-family="Arial, sans-serif">${line}</text>`).join("\n  ")}
-  <g filter="url(#shadow)">
-    <rect x="72" y="510" width="936" height="390" rx="24" fill="#09251E"/>
-    <path d="M126 850 L126 650 L264 590 L264 850 Z" fill="#174C3B"/>
-    <path d="M294 850 L294 575 L494 510 L494 850 Z" fill="url(#glass)" opacity="0.86"/>
-    <path d="M530 850 L530 630 L720 570 L720 850 Z" fill="#2D6B54"/>
-    <path d="M748 850 L748 690 L930 635 L930 850 Z" fill="#123A2E"/>
-    <g fill="#FFF8E2" opacity="0.72">
-      ${Array.from({ length: 6 }, (_, row) => Array.from({ length: 4 }, (_col, col) => `<rect x="${326 + col * 38}" y="${586 + row * 38}" width="18" height="18" rx="3"/>`).join("")).join("\n      ")}
-    </g>
-    <path d="M72 850 C230 810 368 920 546 860 C720 800 850 836 1008 780 L1008 900 L72 900 Z" fill="#E6C15A" opacity="0.92"/>
-    <circle cx="190" cy="705" r="58" fill="none" stroke="#E6C15A" stroke-width="8"/>
-    <path d="M160 705 H220 M190 675 V735" stroke="#E6C15A" stroke-width="7"/>
-  </g>
-  <rect x="72" y="950" width="600" height="250" rx="22" fill="#F8F2DE" opacity="0.97"/>
-  <text x="112" y="1018" fill="#103B2E" font-size="34" font-family="Arial, sans-serif" font-weight="800">${subtitle}</text>
-  <text x="112" y="1078" fill="#103B2E" font-size="30" font-family="Arial, sans-serif">${points[0]}</text>
-  <text x="112" y="1124" fill="#103B2E" font-size="30" font-family="Arial, sans-serif">${points[1]}</text>
-  <text x="112" y="1170" fill="#103B2E" font-size="30" font-family="Arial, sans-serif">${points[2]}</text>
-  <rect x="712" y="950" width="296" height="250" rx="22" fill="#F8F2DE" opacity="0.97"/>
-  <text x="748" y="1024" fill="#103B2E" font-size="28" font-family="Arial, sans-serif" font-weight="800">预约看房</text>
-  <text x="748" y="1064" fill="#466257" font-size="20" font-family="Arial, sans-serif">发布前替换真实二维码</text>
-  <rect x="815" y="1090" width="118" height="118" rx="10" fill="#ffffff" stroke="#103B2E" stroke-width="4"/>
-  <path d="M835 1110h27v27h-27zM887 1110h27v27h-27zM835 1162h27v27h-27zM879 1164h14v14h-14zM902 1182h17v10h-17z" fill="#103B2E"/>
-  <text x="72" y="1288" fill="#FFF8E2" font-size="40" font-family="Arial, sans-serif" font-weight="800">${building}｜南京西路</text>
-  <text x="72" y="1346" fill="#D5DFD8" font-size="30" font-family="Arial, sans-serif">${contact}</text>
+  <rect width="1080" height="1440" fill="#10191D"/>
+  <image href="${heroSrc}" x="0" y="0" width="1080" height="1440" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="1080" height="760" fill="url(#topShade)"/>
+  <rect y="760" width="1080" height="680" fill="url(#bottomShade)"/>
+  <rect x="72" y="76" width="10" height="28" fill="#D8B76A"/>
+  <text x="102" y="100" fill="#F7F2E8" font-size="28" font-family="Arial, 'Noto Sans SC', sans-serif" font-weight="700">${brand}</text>
+  ${titleLines.map((line, index) => `<text x="72" y="${220 + index * 92}" fill="#FFFFFF" font-size="76" font-family="Arial, 'Noto Sans SC', sans-serif" font-weight="900">${line}</text>`).join("\n  ")}
+  <line x1="72" y1="${390 + titleLines.length * 92}" x2="202" y2="${390 + titleLines.length * 92}" stroke="#D8B76A" stroke-width="5"/>
+  ${trendLines.map((line, index) => `<text x="72" y="${452 + titleLines.length * 92 + index * 40}" fill="#E6E9E5" font-size="28" font-family="Arial, 'Noto Sans SC', sans-serif">${line}</text>`).join("\n  ")}
+  <text x="72" y="1046" fill="#D8B76A" font-size="26" font-family="Arial, 'Noto Sans SC', sans-serif" font-weight="700">OFFICE LEASING / SHANGHAI</text>
+  <text x="72" y="1110" fill="#FFFFFF" font-size="48" font-family="Arial, 'Noto Sans SC', sans-serif" font-weight="900">${building}</text>
+  <text x="72" y="1156" fill="#E1E7E4" font-size="30" font-family="Arial, 'Noto Sans SC', sans-serif">${subtitle}</text>
+  <line x1="72" y1="1196" x2="1008" y2="1196" stroke="#FFFFFF" stroke-opacity="0.35"/>
+  <text x="72" y="1250" fill="#FFFFFF" font-size="29" font-family="Arial, 'Noto Sans SC', sans-serif">01  ${points[0]}</text>
+  <text x="72" y="1300" fill="#FFFFFF" font-size="29" font-family="Arial, 'Noto Sans SC', sans-serif">02  ${points[1]}</text>
+  <text x="72" y="1350" fill="#FFFFFF" font-size="29" font-family="Arial, 'Noto Sans SC', sans-serif">03  ${points[2]}</text>
+  <rect x="822" y="1216" width="164" height="164" fill="#FFFFFF"/>
+  <path d="M844 1238h28v28h-28zM934 1238h28v28h-28zM844 1328h28v28h-28zM887 1282h16v16h-16zM916 1307h21v14h-21zM902 1284h18v20h-18z" fill="#10191D"/>
+  <text x="72" y="1410" fill="#E6E9E5" font-size="27" font-family="Arial, 'Noto Sans SC', sans-serif">${contact}</text>
 </svg>`;
 }
 

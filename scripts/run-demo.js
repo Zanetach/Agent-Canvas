@@ -25,7 +25,9 @@ await fs.mkdir(runDir, { recursive: true });
 
 const creative = result.creatives[0];
 const copy = result.copies.channels;
+const heroAssetRef = creative.design_json.layers.find((layer) => layer.id === "hero").asset_ref;
 
+await fs.copyFile(path.join(root, "public", "assets", heroAssetRef), path.join(runDir, heroAssetRef));
 await fs.writeFile(path.join(runDir, "result.json"), JSON.stringify(result, null, 2));
 await fs.writeFile(path.join(runDir, "pipeline-report.md"), buildPipelineReport(result));
 await fs.writeFile(path.join(runDir, "poster.svg"), creative.preview_svg);
