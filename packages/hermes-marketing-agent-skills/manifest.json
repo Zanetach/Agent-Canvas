@@ -1,0 +1,39 @@
+{
+  "name": "hermes-marketing-agent-skills",
+  "version": "1.0.0",
+  "description": "A curated Hermes Skill bundle for end-to-end marketing strategy, content production, publishing, and optimization.",
+  "skills": [
+    "news-aggregator-skill",
+    "product-marketing",
+    "customer-research",
+    "competitor-profiling",
+    "marketing-plan",
+    "content-strategy",
+    "copywriting",
+    "social",
+    "baoyu-cover-image",
+    "baoyu-xhs-images",
+    "baoyu-post-to-wechat",
+    "cro",
+    "revops",
+    "analytics",
+    "ab-testing"
+  ],
+  "sources": [
+    {
+      "repository": "https://github.com/cclank/news-aggregator-skill",
+      "commit": "b639b622a79ec242669d6111708efbf863592de4",
+      "license": "MIT"
+    },
+    {
+      "repository": "https://github.com/coreyhaines31/marketingskills",
+      "commit": "0ba2a7fafc7b0827a261bd518e87cbda18e6675f",
+      "license": "MIT"
+    },
+    {
+      "repository": "https://github.com/JimLiu/baoyu-skills",
+      "commit": "6b7a2e417500561a5ecdd0b168332f4142584617",
+      "license": "MIT"
+    }
+  ]
+}
