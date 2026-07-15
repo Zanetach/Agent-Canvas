@@ -50,11 +50,11 @@
 
 **Blocked by:** BeeMax Bridge 文生图主链与 Provider 路由; Codex 全功能图片生成与编辑.
 
-- [ ] 插件使用 Hermes PluginContext 注册画布打开、导入、任务查询和组合生图工具，不修改 Hermes 核心。
-- [ ] 默认流程复用 Hermes 当前 `image_generate` 配置，生成文件可直接导入 BeeMax。
-- [ ] 提供一次完成“生成并放进画布”的组合工具，并保留生成与导入两个独立步骤。
-- [ ] Hermes Provider 不支持请求能力时，可以切换 BeeMax Bridge 的 Codex 或中转站 fallback。
-- [ ] 插件安装、启用、禁用和卸载不会破坏 Hermes 原有 Provider 配置。
+- [x] 插件使用 Hermes PluginContext 注册画布打开、导入、任务查询和组合生图工具，不修改 Hermes 核心。
+- [x] 默认流程复用 Hermes 当前 `image_generate` 配置，生成文件可直接导入 BeeMax。
+- [x] 提供一次完成“生成并放进画布”的组合工具，并保留生成与导入两个独立步骤。
+- [x] Hermes Provider 不支持请求能力时，可以切换 BeeMax Bridge 的 Codex 或中转站 fallback。
+- [x] 插件安装、启用、禁用和卸载不会破坏 Hermes 原有 Provider 配置。
 - [ ] 通过真实 Hermes 会话完成文生图、参考图编辑、失败 fallback 和画布导入测试。
 
 ## BeeMax 通用 MCP Server 生图闭环

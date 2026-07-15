@@ -90,6 +90,17 @@ GET  /api/beemax/capabilities
 
 为兼容原画布，`status` 保留 `pending`、`running`、`completed`、`failed` 和 `cancelled`；跨引擎字段 `canonical_status` 统一为 `pending`、`running`、`success`、`error` 和 `cancelled`。任务、路由事件和图片元数据会持久化；服务重启后仍可查询。重启时尚未结束的任务会标记为中断失败，可通过 retry 创建新任务。
 
+## Hermes Agent 插件
+
+Hermes 原生插件位于 `integrations/hermes/beemax-canvas`。安装到用户插件目录并启用：
+
+```bash
+cp -R integrations/hermes/beemax-canvas "$HOME/.hermes/plugins/beemax-canvas"
+~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main plugins enable beemax-canvas
+```
+
+新 Hermes 会话会注册画布状态、Bridge 生图、Hermes 生图并导入、独立导入、任务查询/取消/重试和打开浏览器等工具。组合工具默认复用 Hermes 当前 `image_generate` Provider；没有配置或调用失败时回退 BeeMax Bridge。插件不修改 Hermes 核心和原有 Provider 配置。详细工具与环境变量见 `integrations/hermes/beemax-canvas/README.md`。
+
 ## 验证
 
 完整验证包括 Bridge 单元/集成测试、原前端资源代理、浏览器渲染和模拟 Codex 生图：
