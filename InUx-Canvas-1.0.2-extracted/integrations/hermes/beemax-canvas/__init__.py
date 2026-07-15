@@ -206,6 +206,23 @@ def bridge_generate(args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def bridge_generate_and_import(args: dict[str, Any]) -> dict[str, Any]:
+    generated = bridge_generate({**args, "wait": True})
+    if not generated.get("success"):
+        return generated
+    image_urls = generated.get("image_urls") or []
+    if not image_urls:
+        raise RuntimeError("BeeMax Bridge 任务完成但未返回图片 URL")
+    source = str(image_urls[0])
+    if source.startswith("/uploads/"):
+        imported = {"success": True, "source": source, "asset": {"url": source}}
+    else:
+        absolute_source = f"{_base_url()}{source}" if source.startswith("/") else source
+        imported = import_image(absolute_source, timeout=_timeout(args, 30.0))
+    generated.update({"asset": imported["asset"], "import": imported})
+    return generated
+
+
 def hermes_generate_image(args: dict[str, Any]) -> dict[str, Any]:
     """Dispatch the existing Hermes image tool without starting another model turn."""
     try:
@@ -282,7 +299,7 @@ def handle_generate_and_import(args: dict[str, Any], **_kwargs: Any) -> str:
         return _error("engine 只能是 hermes 或 bridge")
     try:
         if engine == "bridge":
-            return _result({"engine": "bridge", **bridge_generate(args)})
+            return _result({"engine": "bridge", **bridge_generate_and_import(args)})
 
         generated = hermes_generate_image(args)
         source = _generated_source(generated)
@@ -302,40 +319,34 @@ def handle_generate_and_import(args: dict[str, Any], **_kwargs: Any) -> str:
         reason = str(generated.get("error") or "Hermes image_generate 未返回图片")
         if not _bool(args.get("fallback_to_bridge"), True):
             return _error(reason, engine="hermes", generation=generated)
-        fallback = bridge_generate(args)
+        fallback = bridge_generate_and_import(args)
         return _result({"engine": "bridge", "fallback_reason": reason, **fallback})
     except Exception as exc:
         return _error(str(exc), engine=engine)
 
 
-def handle_task_status(args: dict[str, Any], **_kwargs: Any) -> str:
+def _handle_task_action(args: dict[str, Any], method: str, suffix: str = "") -> str:
     task_id = str(args.get("task_id") or "").strip()
     if not task_id:
         return _error("task_id 不能为空")
     try:
-        return _result(_request_json("GET", f"/api/task/{quote(task_id)}", timeout=_timeout(args)))
+        path = f"/api/task/{quote(task_id)}{suffix}"
+        payload = {} if method == "POST" else None
+        return _result(_request_json(method, path, payload=payload, timeout=_timeout(args)))
     except Exception as exc:
         return _error(str(exc), task_id=task_id)
+
+
+def handle_task_status(args: dict[str, Any], **_kwargs: Any) -> str:
+    return _handle_task_action(args, "GET")
 
 
 def handle_cancel_task(args: dict[str, Any], **_kwargs: Any) -> str:
-    task_id = str(args.get("task_id") or "").strip()
-    if not task_id:
-        return _error("task_id 不能为空")
-    try:
-        return _result(_request_json("POST", f"/api/task/{quote(task_id)}/cancel", payload={}, timeout=_timeout(args)))
-    except Exception as exc:
-        return _error(str(exc), task_id=task_id)
+    return _handle_task_action(args, "POST", "/cancel")
 
 
 def handle_retry_task(args: dict[str, Any], **_kwargs: Any) -> str:
-    task_id = str(args.get("task_id") or "").strip()
-    if not task_id:
-        return _error("task_id 不能为空")
-    try:
-        return _result(_request_json("POST", f"/api/task/{quote(task_id)}/retry", payload={}, timeout=_timeout(args)))
-    except Exception as exc:
-        return _error(str(exc), task_id=task_id)
+    return _handle_task_action(args, "POST", "/retry")
 
 
 def handle_open_canvas(args: dict[str, Any], **_kwargs: Any) -> str:
@@ -386,7 +397,6 @@ TOOLS = (
                 "quality": {"type": "string"},
                 "project_id": {"type": "string"},
                 "node_id": {"type": "string"},
-                "wait": WAIT,
                 "timeout_seconds": TIMEOUT,
             },
             ["prompt"],

@@ -222,6 +222,7 @@ class BeeMaxCanvasPluginTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["engine"], "bridge")
         self.assertIn("Hermes image provider is not configured", result["fallback_reason"])
+        self.assertEqual(result["asset"]["url"], "/uploads/images/imported.png")
 
     def test_task_control_tools(self):
         status = self.call(self.plugin.handle_task_status, {"task_id": "task-1"})
