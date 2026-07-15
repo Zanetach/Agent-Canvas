@@ -201,16 +201,6 @@ function canonicalImagePayload(payload) {
     error.statusCode = 422;
     throw error;
   }
-  if (
-    operation === "mask" &&
-    [inputImages[0], maskImage].some((reference) =>
-      /^https?:\/\//.test(String(reference?.url || "")),
-    )
-  ) {
-    const error = new Error("Mask 与源图片必须先上传为 Canvas 资产或使用图片 Data URL");
-    error.statusCode = 422;
-    throw error;
-  }
   return {
     ...payload,
     operation,
@@ -369,6 +359,11 @@ export function createBridgeServer({
   const assetsDir = path.join(dataDir, "assets");
   const tasksDir = path.join(dataDir, "tasks");
   const upstream = upstreamUrl.replace(/\/$/, "");
+  const controlledOrigins = new Set(
+    [upstream, publicOrigin]
+      .filter(Boolean)
+      .map((value) => new URL(value).origin),
+  );
   let loadPromise;
 
   async function ensureTasksLoaded() {
@@ -507,6 +502,36 @@ export function createBridgeServer({
     return asset;
   }
 
+  function controlledImageFetchUrl(value) {
+    const imageUrl = String(value || "");
+    if (!/^\/(?:uploads|beemax-assets)\//.test(imageUrl)) {
+      if (!/^https?:\/\//.test(imageUrl)) return "";
+      const parsed = new URL(imageUrl);
+      if (
+        !controlledOrigins.has(parsed.origin) ||
+        !/^\/(?:uploads|beemax-assets)\//.test(parsed.pathname)
+      ) {
+        return "";
+      }
+      return parsed.href;
+    }
+    const sourceOrigin = imageUrl.startsWith("/uploads/") ? upstream : publicOrigin;
+    return sourceOrigin ? new URL(imageUrl, `${sourceOrigin.replace(/\/$/, "")}/`).href : "";
+  }
+
+  function validateControlledMaskReferences(payload) {
+    if (payload.operation !== "mask") return;
+    const uncontrolled = [payload.input_images[0], payload.mask_image].some((reference) => {
+      const imageUrl = String(reference?.url || "");
+      return /^https?:\/\//.test(imageUrl) && !controlledImageFetchUrl(imageUrl);
+    });
+    if (uncontrolled) {
+      const error = new Error("Mask 与源图片必须先上传为 Canvas 资产或使用图片 Data URL");
+      error.statusCode = 422;
+      throw error;
+    }
+  }
+
   async function materializeImageReference(reference, signal, budget) {
     if (reference.url.startsWith("data:image/")) {
       const match = reference.url.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
@@ -521,10 +546,9 @@ export function createBridgeServer({
       }
       return reference;
     }
-    if (!reference.url.startsWith("/")) return reference;
-    const sourceOrigin = reference.url.startsWith("/uploads/") ? upstream : publicOrigin;
-    if (!sourceOrigin) throw new Error(`无法解析 Canvas 图片资产：${reference.url}`);
-    const imageResponse = await fetch(`${sourceOrigin}${reference.url}`, {
+    const fetchUrl = controlledImageFetchUrl(reference.url);
+    if (!fetchUrl) return reference;
+    const imageResponse = await fetch(fetchUrl, {
       signal,
       redirect: "manual",
     });
@@ -847,6 +871,7 @@ export function createBridgeServer({
 
       if (request.method === "POST" && url.pathname === "/api/image") {
         const payload = canonicalImagePayload(await readJson(request));
+        validateControlledMaskReferences(payload);
         if (!String(payload.prompt || "").trim()) {
           sendJson(response, 422, { success: false, error: "prompt 不能为空" });
           return;

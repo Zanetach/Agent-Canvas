@@ -551,6 +551,57 @@ test("mask requests reject uncontrolled remote source and mask URLs", async () =
   }
 });
 
+test("mask requests accept absolute URLs from the configured Canvas backend", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const upstream = createServer((_request, response) => {
+    response.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": String(PNG_BYTES.length),
+    });
+    response.end(PNG_BYTES);
+  });
+  const upstreamUrl = await listen(upstream);
+  let providerCalls = 0;
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, mask: true, references: 10 },
+        async generate() {
+          providerCalls += 1;
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const response = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "mask",
+        prompt: "edit the masked area",
+        input_images: [`${upstreamUrl}/uploads/source.png`],
+        mask_image: `${upstreamUrl}/uploads/mask.png`,
+      }),
+    });
+    const submitted = await response.json();
+
+    assert.equal(response.status, 200);
+    const task = await waitForTask(baseUrl, submitted.task_id);
+    assert.equal(task.canonical_status, "success");
+    assert.equal(providerCalls, 1);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("direct Codex provider sends reference images and mask to the Responses tool", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-provider-test-"));
   const authFile = path.join(dataDir, "codex-auth.json");
