@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   createCommandCodexProvider,
   createDirectCodexProvider,
+  createHermesTextProvider,
   createRelayProvider,
 } from "./providers.mjs";
 import { createBridgeServer } from "./server.mjs";
@@ -56,6 +57,16 @@ const providers = [
     ? createCommandCodexProvider({ command: codexCommand, timeoutMs: codexTimeoutMs })
     : createDirectCodexProvider({ timeoutMs: codexTimeoutMs }),
 ];
+
+try {
+  providers.push(
+    await createHermesTextProvider({
+      timeoutMs: integerEnv("BEEMAX_HERMES_TIMEOUT_MS", 300_000),
+    }),
+  );
+} catch (error) {
+  console.warn(`[beemax-bridge] Hermes text provider unavailable: ${error.message}`);
+}
 
 const legacy = await legacyRelaySettings(dataRoot);
 const relayBaseUrl = process.env.BEEMAX_RELAY_BASE_URL || legacy.apiBaseUrl;

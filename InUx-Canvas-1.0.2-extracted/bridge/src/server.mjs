@@ -20,7 +20,7 @@ const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MANAGED_CODEX_PROVIDER = Object.freeze({
   id: "beemax-codex-agent",
-  name: "BeeMax Codex Agent",
+  name: "BeeMax Hermes + Codex Agent",
   protocol: "beemax",
   enabled: true,
   baseUrl: "",
@@ -33,14 +33,21 @@ const MANAGED_CODEX_PROVIDER = Object.freeze({
   defaultVideoModel: "",
 });
 
-function withManagedCodexProvider(settings) {
+function withManagedCodexProvider(settings, managedProvider = MANAGED_CODEX_PROVIDER) {
   const current = Array.isArray(settings?.providers) ? settings.providers : [];
+  const providers = [
+    managedProvider,
+    ...current.filter((provider) => provider?.id !== MANAGED_CODEX_PROVIDER.id),
+  ];
+  const activeProviderId = providers.some(
+    (provider) => provider?.id === settings?.activeProviderId && provider.enabled !== false,
+  )
+    ? settings.activeProviderId
+    : managedProvider.id;
   return {
     ...(settings || {}),
-    providers: [
-      MANAGED_CODEX_PROVIDER,
-      ...current.filter((provider) => provider?.id !== MANAGED_CODEX_PROVIDER.id),
-    ],
+    activeProviderId,
+    providers,
   };
 }
 
@@ -364,6 +371,16 @@ export function createBridgeServer({
       .filter(Boolean)
       .map((value) => new URL(value).origin),
   );
+  const textModels = [...new Set(providers.flatMap((provider) => provider.textModels || []))];
+  const imageProviders = providers.filter(
+    (provider) =>
+      provider.capabilities?.generate !== false && typeof provider.generate === "function",
+  );
+  const managedProvider = Object.freeze({
+    ...MANAGED_CODEX_PROVIDER,
+    textModels,
+    defaultTextModel: textModels[0] || "",
+  });
   let loadPromise;
 
   async function ensureTasksLoaded() {
@@ -440,6 +457,27 @@ export function createBridgeServer({
     }
   }
 
+  async function proxyJsonRequest(pathname, payload, response) {
+    if (!upstream) {
+      sendJson(response, 404, { success: false, error: "Not found" });
+      return;
+    }
+    const upstreamResponse = await fetch(`${upstream}${pathname}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    response.writeHead(upstreamResponse.status, {
+      "content-type": upstreamResponse.headers.get("content-type") || "application/json",
+      "cache-control": "no-store",
+    });
+    if (!upstreamResponse.body) {
+      response.end();
+      return;
+    }
+    await pipeline(Readable.fromWeb(upstreamResponse.body), response);
+  }
+
   async function proxyRuntimeSettings(request, response) {
     if (!upstream) {
       sendJson(response, 404, { success: false, error: "原 Canvas 后端未配置" });
@@ -467,9 +505,9 @@ export function createBridgeServer({
       return;
     }
     if (payload?.settings && typeof payload.settings === "object") {
-      payload.settings = withManagedCodexProvider(payload.settings);
+      payload.settings = withManagedCodexProvider(payload.settings, managedProvider);
     } else {
-      payload = withManagedCodexProvider(payload);
+      payload = withManagedCodexProvider(payload, managedProvider);
     }
     sendJson(response, upstreamResponse.status, payload);
   }
@@ -836,7 +874,7 @@ export function createBridgeServer({
       if (request.method === "GET" && url.pathname === "/api/beemax/capabilities") {
         const maxReferenceImages = Math.max(
           0,
-          ...providers.map((provider) => Number(provider.capabilities?.references || 0)),
+          ...imageProviders.map((provider) => Number(provider.capabilities?.references || 0)),
         );
         sendJson(response, 200, {
           success: true,
@@ -853,8 +891,8 @@ export function createBridgeServer({
               async: true,
               cancel: true,
               retry: true,
-              route: providers.map((provider) => provider.id),
-              providers: providers.map((provider) => ({
+              route: imageProviders.map((provider) => provider.id),
+              providers: imageProviders.map((provider) => ({
                 id: provider.id,
                 capabilities: provider.capabilities || { generate: true },
               })),
@@ -879,7 +917,7 @@ export function createBridgeServer({
           sendJson(response, 422, { success: false, error: "prompt 不能为空" });
           return;
         }
-        if (!providers.some((provider) => providerSupportsPayload(provider, payload))) {
+        if (!imageProviders.some((provider) => providerSupportsPayload(provider, payload))) {
           sendJson(response, 422, {
             success: false,
             error: `没有 Provider 支持 ${payload.operation}（参考图 ${payload.input_images.length} 张）`,
@@ -896,6 +934,53 @@ export function createBridgeServer({
         await persistTask(task);
         sendJson(response, 200, { success: true, task_id: task.task_id });
         launchTask(task, payload);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/llm") {
+        const payload = await readJson(request);
+        if (payload.provider_id !== MANAGED_CODEX_PROVIDER.id) {
+          await proxyJsonRequest(url.pathname, payload, response);
+          return;
+        }
+        const requestedModel = String(payload.model_name || managedProvider.defaultTextModel || "");
+        const textProviders = providers.filter(
+          (candidate) => typeof candidate.generateText === "function",
+        );
+        const provider = textProviders.find(
+          (candidate) =>
+            !candidate.textModels?.length || candidate.textModels.includes(requestedModel),
+        );
+        if (!provider) {
+          sendJson(response, 422, {
+            success: false,
+            error: requestedModel
+              ? `没有文本 Provider 支持模型 ${requestedModel}`
+              : "当前 Hermes Provider 不支持文本生成",
+          });
+          return;
+        }
+        const userPrompt = String(payload.user_prompt || "").trim();
+        if (!userPrompt) {
+          sendJson(response, 422, { success: false, error: "user_prompt 不能为空" });
+          return;
+        }
+        const generated = await provider.generateText({
+          model: requestedModel,
+          systemPrompt: String(payload.system_prompt || ""),
+          userPrompt,
+          temperature: Number(payload.temperature ?? 0.7),
+          maxTokens: Math.max(1, Math.min(128_000, Number(payload.max_tokens) || 4096)),
+          imageUrls: Array.isArray(payload.image_urls)
+            ? payload.image_urls.map(String).filter(Boolean)
+            : [],
+        });
+        sendJson(response, 200, {
+          success: true,
+          response: generated.text,
+          model: generated.model || requestedModel,
+          provider: provider.id,
+        });
         return;
       }
 

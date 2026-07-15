@@ -9,6 +9,7 @@ import { createBridgeServer, cropDimensions } from "../src/server.mjs";
 import {
   createCommandCodexProvider,
   createDirectCodexProvider,
+  createHermesTextProvider,
   createRelayProvider,
 } from "../src/providers.mjs";
 
@@ -1246,11 +1247,12 @@ test("legacy runtime settings expose the managed BeeMax Codex image provider", a
     const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
       response.json(),
     );
+    assert.equal(settings.activeProviderId, "beemax-codex-agent");
     assert.deepEqual(
       settings.providers.find((provider) => provider.id === "beemax-codex-agent"),
       {
         id: "beemax-codex-agent",
-        name: "BeeMax Codex Agent",
+        name: "BeeMax Hermes + Codex Agent",
         protocol: "beemax",
         enabled: true,
         baseUrl: "",
@@ -1279,6 +1281,153 @@ test("legacy runtime settings expose the managed BeeMax Codex image provider", a
     await new Promise((resolve) => upstream.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test("managed BeeMax Codex provider exposes and serves text generation", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  let receivedTextPayload;
+  const upstream = createServer((request, response) => {
+    if (request.url === "/api/admin/runtime-settings") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ providers: [] }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const upstreamUrl = await listen(upstream);
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, text: true },
+        textModels: ["glm-test-text"],
+        async generate() {
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+        async generateText(payload) {
+          receivedTextPayload = payload;
+          return { text: "这是一段由 Codex 生成的文本。", model: "gpt-5.4" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then(
+      (response) => response.json(),
+    );
+    const managed = settings.providers.find(
+      (provider) => provider.id === "beemax-codex-agent",
+    );
+    assert.deepEqual(managed.textModels, ["glm-test-text"]);
+    assert.equal(managed.defaultTextModel, "glm-test-text");
+
+    const response = await fetch(`${baseUrl}/api/llm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider_id: "beemax-codex-agent",
+        model_name: "glm-test-text",
+        system_prompt: "你是专业文案助手。",
+        user_prompt: "写一句科技品牌标语。",
+        temperature: 0.7,
+        max_tokens: 256,
+        api_key: "must-not-cross-provider-boundary",
+      }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.response, "这是一段由 Codex 生成的文本。");
+    assert.deepEqual(receivedTextPayload, {
+      model: "glm-test-text",
+      systemPrompt: "你是专业文案助手。",
+      userPrompt: "写一句科技品牌标语。",
+      temperature: 0.7,
+      maxTokens: 256,
+      imageUrls: [],
+    });
+
+    const unsupported = await fetch(`${baseUrl}/api/llm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider_id: "beemax-codex-agent",
+        model_name: "unknown-text-model",
+        user_prompt: "不能路由到其他模型",
+      }),
+    });
+    assert.equal(unsupported.status, 422);
+    assert.match((await unsupported.json()).error, /没有文本 Provider 支持模型/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes text provider discovers the configured model without exposing credentials", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  await writeFile(
+    configFile,
+    [
+      "model:",
+      "  default: glm-test-2026",
+      "  provider: custom:test-provider",
+      "  api_key: must-never-leave-hermes",
+      "providers:",
+      "  custom:test-provider:",
+      "    base_url: https://example.invalid/v1",
+    ].join("\n"),
+  );
+  const command = [
+    process.execPath,
+    "-e",
+    "process.stdout.write('Hermes generated text')",
+    "--",
+  ];
+
+  try {
+    const provider = await createHermesTextProvider({ configFile, command });
+    assert.equal(provider.id, "hermes-agent");
+    assert.deepEqual(provider.textModels, ["glm-test-2026"]);
+    assert.equal(provider.defaultTextModel, "glm-test-2026");
+    assert.doesNotMatch(JSON.stringify(provider), /must-never-leave-hermes/);
+
+    const result = await provider.generateText(
+      {
+        model: "glm-test-2026",
+        systemPrompt: "You are a copywriter.",
+        userPrompt: "Write a slogan.",
+      },
+      { signal: new AbortController().signal },
+    );
+    assert.deepEqual(result, {
+      text: "Hermes generated text",
+      model: "glm-test-2026",
+      provider: "custom:test-provider",
+    });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes text provider is not published when its configured executable is missing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-hermes-missing-test-"));
+  const configFile = path.join(root, "config.yaml");
+  await writeFile(configFile, "model:\n  default: glm-test-text\n", "utf8");
+  await assert.rejects(
+    createHermesTextProvider({
+      configFile,
+      command: [path.join(root, "missing-hermes")],
+    }),
+    /ENOENT/,
+  );
+  await rm(root, { recursive: true, force: true });
 });
 
 test("completed Bridge tasks remain queryable after the service restarts", async () => {

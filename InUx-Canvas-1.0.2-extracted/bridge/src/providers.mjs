@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { access, readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,6 +9,8 @@ const DEFAULT_CODEX_AUTH_FILE = path.join(
   "auth.json",
 );
 const DEFAULT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex";
+const DEFAULT_HERMES_CONFIG_FILE = path.join(homedir(), ".hermes", "config.yaml");
+const DEFAULT_HERMES_COMMAND = [path.join(homedir(), ".local", "bin", "hermes")];
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 
 function aspectRatio(value) {
@@ -113,6 +116,143 @@ async function readCodexAccessToken(authFile) {
     throw new Error("Codex CLI 登录已过期，请重新运行 codex login");
   }
   return { accessToken: accessToken.trim(), claims };
+}
+
+function yamlScalar(value) {
+  const trimmed = String(value || "").trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function hermesModelSelection(config) {
+  const modelBlock = String(config || "").match(/^model:\s*\n((?:[ \t]+.*(?:\n|$))*)/m)?.[1] || "";
+  return {
+    model: yamlScalar(modelBlock.match(/^\s+default:\s*(.+)$/m)?.[1]),
+    provider: yamlScalar(modelBlock.match(/^\s+provider:\s*(.+)$/m)?.[1]),
+  };
+}
+
+function runHermesText(command, args, { signal, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const [executable, ...baseArgs] = command;
+    const child = spawn(executable, [...baseArgs, ...args], {
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+    let outputBytes = 0;
+    let timedOut = false;
+    let forceKill;
+    const maxOutputBytes = 2 * 1024 * 1024;
+    const terminate = () => {
+      child.kill("SIGTERM");
+      forceKill ||= setTimeout(() => {
+        if (child.exitCode === null) child.kill("SIGKILL");
+      }, 2_000);
+    };
+    const abort = () => terminate();
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, timeoutMs);
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stdout.on("data", (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) terminate();
+      else stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) terminate();
+      else stderr.push(chunk);
+    });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKill);
+      signal?.removeEventListener("abort", abort);
+      reject(error);
+    });
+    child.once("close", (code, processSignal) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKill);
+      signal?.removeEventListener("abort", abort);
+      if (signal?.aborted) {
+        reject(signal.reason || new Error("Hermes 文本任务已取消"));
+        return;
+      }
+      if (outputBytes > maxOutputBytes) {
+        reject(new Error("Hermes 文本输出超过 2 MB 限制"));
+        return;
+      }
+      if (timedOut) {
+        reject(new Error(`Hermes 文本生成超时（${Math.round(timeoutMs / 1000)} 秒）`));
+        return;
+      }
+      if (code !== 0) {
+        const detail = Buffer.concat(stderr).toString("utf8").trim();
+        reject(
+          new Error(
+            `Hermes 文本生成失败 (${code ?? processSignal ?? "unknown"})${detail ? `: ${detail.slice(-800)}` : ""}`,
+          ),
+        );
+        return;
+      }
+      const text = Buffer.concat(stdout)
+        .toString("utf8")
+        .replace(/\u001b\[[0-9;]*m/g, "")
+        .trim();
+      if (!text) {
+        reject(new Error("Hermes 未返回文本"));
+        return;
+      }
+      resolve(text);
+    });
+  });
+}
+
+export async function createHermesTextProvider({
+  configFile = DEFAULT_HERMES_CONFIG_FILE,
+  command = DEFAULT_HERMES_COMMAND,
+  timeoutMs = 300_000,
+} = {}) {
+  if (!Array.isArray(command) || command.length === 0) {
+    throw new Error("Hermes command must be a non-empty array");
+  }
+  if (path.isAbsolute(command[0])) {
+    await access(command[0], fsConstants.X_OK);
+  }
+  const selection = hermesModelSelection(await readFile(configFile, "utf8"));
+  if (!selection.model) throw new Error("Hermes 尚未配置默认文本模型");
+  return {
+    id: "hermes-agent",
+    capabilities: {
+      generate: false,
+      text: true,
+      cancel: true,
+    },
+    textModels: [selection.model],
+    defaultTextModel: selection.model,
+    async generateText(payload, { signal } = {}) {
+      const model = String(payload.model || selection.model);
+      const combinedPrompt = [
+        payload.systemPrompt ? `系统指令：\n${payload.systemPrompt}` : "",
+        `用户请求：\n${String(payload.userPrompt || "")}`,
+        "直接输出最终文本，不要描述执行过程。",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const args = ["-z", combinedPrompt, "-m", model, "--ignore-rules"];
+      if (selection.provider) args.push("--provider", selection.provider);
+      const text = await runHermesText(command, args, { signal, timeoutMs });
+      return { text, model, provider: selection.provider };
+    },
+  };
 }
 
 function findImageBase64(value) {

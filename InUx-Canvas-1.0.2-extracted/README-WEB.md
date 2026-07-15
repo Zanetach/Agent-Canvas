@@ -51,7 +51,9 @@ Bridge 复用本机 Codex CLI 的 ChatGPT OAuth，不需要在浏览器填写 Op
 
 Bridge 只读 `~/.codex/auth.json` 当前 access token，不读取或刷新 Codex CLI 的 refresh token，也不依赖 Hermes 安装。
 
-Bridge 会向旧版 Canvas 设置接口注入只读的 `BeeMax Codex Agent` 图片 Provider，因此图片节点不会再显示“未配置 API”。保存设置时该受管 Provider 会被自动剔除，不会污染原中转站配置。
+Bridge 会向旧版 Canvas 设置接口注入只读的 `BeeMax Hermes + Codex Agent` 受管 Provider。启动时会从 Hermes 配置发现当前默认 LLM 模型，从 Codex 暴露 `gpt-image-2`，两者会一起出现在“模型配置”中。文本请求交给 Hermes，图片请求交给 Codex；Hermes/Codex 各自保管认证信息，BeeMax 不复制密钥。保存设置时该受管 Provider 会被自动剔除，不会污染原中转站配置。
+
+Hermes 未安装或尚未配置默认模型时，Bridge 仍可启动，但只显示 Codex 图片模型。修改 Hermes 默认模型后重启 BeeMax，即会重新发现并更新文本模型列表。
 
 原画布的 `gpt-image-2` 会根据质量映射为：
 
