@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+    <script>
+      // 防主题闪烁 (FOUC) — React 渲染前先把 data-theme 写好
+      (function () {
+        try {
+          var raw = localStorage.getItem('usehooks-ts-dark-mode');
+          var isDark;
+          if (raw === null) {
+            isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } else {
+            isDark = JSON.parse(raw) === true;
+          }
+          document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DjunO4C0.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BqetXt_B.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
