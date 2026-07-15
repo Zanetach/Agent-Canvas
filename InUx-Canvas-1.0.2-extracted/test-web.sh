@@ -62,7 +62,7 @@ curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/beemax/health" >"$TEST_DIR/b
 grep -q '"service":"beemax-bridge"' "$TEST_DIR/bridge-health.json"
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/admin/runtime-settings" >"$TEST_DIR/runtime-settings.json"
 grep -q '"id":"beemax-codex-agent"' "$TEST_DIR/runtime-settings.json"
-grep -q '"name":"BeeMax Codex Agent"' "$TEST_DIR/runtime-settings.json"
+grep -q '"name":"BeeMax Hermes + Codex Agent"' "$TEST_DIR/runtime-settings.json"
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/" >"$TEST_DIR/index.html"
 grep -q '<div id="root"></div>' "$TEST_DIR/index.html"
 grep -q '<title>BeeMax Canvas</title>' "$TEST_DIR/index.html"
@@ -71,6 +71,12 @@ asset_path="$(sed -n 's/.*src="\([^"]*\.js\)".*/\1/p' "$TEST_DIR/index.html")"
 [[ -n "$asset_path" ]]
 curl --noproxy '*' -fsS --max-time 5 "$BASE_URL$asset_path" >"$TEST_DIR/app.js"
 [[ -s "$TEST_DIR/app.js" ]]
+grep -q 'AI 配置' "$TEST_DIR/app.js"
+grep -Fq '"未命名中转站"===e.name?"未命名 AI 配置"' "$TEST_DIR/app.js"
+if grep -Eq '配置中转站|还没有中转站|中转站名称|children:"中转站"' "$TEST_DIR/app.js"; then
+  print -u2 "前端仍包含旧的中转站文案"
+  exit 1
+fi
 
 headless_shells=(
   "$HOME"/Library/Caches/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-mac-arm64/chrome-headless-shell(N)

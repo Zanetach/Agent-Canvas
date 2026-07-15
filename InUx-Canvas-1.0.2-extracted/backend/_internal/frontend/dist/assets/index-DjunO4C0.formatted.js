@@ -38933,7 +38933,7 @@ function Ix({ open: e, onClose: t, projectId: n, onLocateNode: r }) {
                                   children: [
                                     (0, Q.jsx)(`span`, {
                                       className: `task-media-address-label`,
-                                      children: `中转站地址`,
+                                      children: `AI 服务地址`,
                                     }),
                                     (0, Q.jsx)(`code`, {
                                       title: e,
@@ -45228,7 +45228,10 @@ var mT = 8192,
       i = e.maxTextTokens ?? e.textMaxTokens ?? mT;
     return {
       id: e.id || xT(),
-      name: e.name || `未命名中转站`,
+      name:
+        e.name === `未命名中转站`
+          ? `未命名 AI 配置`
+          : e.name || `未命名 AI 配置`,
       protocol: e.protocol || `openai`,
       textApiMode: e.textApiMode || `auto`,
       maxTextTokens: bT(i),
@@ -45550,7 +45553,7 @@ function OT({
     _ = (0, v.useCallback)(() => {
       let e = ST({
         id: xT(`provider`),
-        name: `未命名中转站`,
+        name: `未命名 AI 配置`,
         protocol: `openai`,
         textApiMode: `auto`,
         enabled: !0,
@@ -45566,7 +45569,7 @@ function OT({
         c({ type: ``, message: `` }));
     }, [a]),
     y = (0, v.useCallback)(async () => {
-      if (!p || !window.confirm(`确定删除“${p.name || `未命名中转站`}”吗？`))
+      if (!p || !window.confirm(`确定删除“${p.name || `未命名 AI 配置`}”吗？`))
         return;
       let e = a.providers.filter((e) => e.id !== p.id),
         t = CT({
@@ -45575,12 +45578,12 @@ function OT({
           activeProviderId:
             a.activeProviderId === p.id ? e[0]?.id || `` : a.activeProviderId,
         });
-      (o(t), i(e[0]?.id || ``), await g(t, `已删除中转站`));
+      (o(t), i(e[0]?.id || ``), await g(t, `已删除 AI 配置`));
     }, [a, g, p]),
     b = (0, v.useCallback)(async () => {
       if (!p) return;
       let e = CT({ ...a, activeProviderId: p.id });
-      (o(e), await g(e, `已设为默认中转站`));
+      (o(e), await g(e, `已设为默认 AI 配置`));
     }, [a, g, p]),
     x = (0, v.useCallback)(
       async (e) => {
@@ -45668,7 +45671,7 @@ function OT({
           children: [
             (0, Q.jsx)(`h1`, { children: `设置` }),
             (0, Q.jsx)(`p`, {
-              children: `配置中转站、模型列表和文本输出额度。`,
+              children: `配置 AI 服务、模型列表和文本输出额度。`,
             }),
           ],
         }),
@@ -45687,7 +45690,7 @@ function OT({
               (0, Q.jsxs)(`div`, {
                 className: `settings-pane-header`,
                 children: [
-                  (0, Q.jsx)(`h2`, { children: `中转站` }),
+                  (0, Q.jsx)(`h2`, { children: `AI 配置` }),
                   (0, Q.jsx)(`button`, {
                     className: `small-action-btn`,
                     type: `button`,
@@ -45708,7 +45711,7 @@ function OT({
                     a.providers.length === 0 &&
                     (0, Q.jsx)(`div`, {
                       className: `empty-settings`,
-                      children: `还没有中转站，点击“新增”开始配置。`,
+                      children: `还没有 AI 配置，点击“新增”开始配置。`,
                     }),
                   a.providers.map((e) =>
                     (0, Q.jsxs)(
@@ -45722,7 +45725,7 @@ function OT({
                             className: `api-list-name-row`,
                             children: [
                               (0, Q.jsx)(`span`, {
-                                children: e.name || `未命名中转站`,
+                                children: e.name || `未命名 AI 配置`,
                               }),
                               e.id === a.activeProviderId &&
                                 (0, Q.jsx)(`em`, { children: `默认` }),
@@ -45761,7 +45764,7 @@ function OT({
                       className: `settings-pane-header`,
                       children: [
                         (0, Q.jsx)(`h2`, {
-                          children: p.name || `未命名中转站`,
+                          children: p.name || `未命名 AI 配置`,
                         }),
                         (0, Q.jsx)(`span`, {
                           className: `api-status-pill ${p.enabled === !1 ? `disabled` : ``}`,
@@ -45777,7 +45780,7 @@ function OT({
                           children: [
                             (0, Q.jsxs)(`label`, {
                               children: [
-                                `中转站名称`,
+                                `配置名称`,
                                 (0, Q.jsx)(`input`, {
                                   value: p.name,
                                   onChange: (e) => h({ name: e.target.value }),
@@ -45994,7 +45997,7 @@ function OT({
                 })
               : (0, Q.jsx)(`div`, {
                   className: `empty-settings`,
-                  children: `选择或新增一个中转站。`,
+                  children: `选择或新增一个 AI 配置。`,
                 }),
           }),
         ],
