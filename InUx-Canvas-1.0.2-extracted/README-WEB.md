@@ -88,6 +88,8 @@ GET  /api/beemax/health
 GET  /api/beemax/capabilities
 ```
 
+`POST /api/image` 的 `operation` 支持 `generate`、`edit`、`mask`、`outpaint` 和 `variation`。高级操作使用 `input_images`（最多 10 张）；Mask 额外使用 `mask_image`。图片引用可以是 Canvas 资产路径、HTTP(S) URL 或图片 Data URL，本地文件由 Agent Adapter 先上传为 Canvas 资产。Mask 与源图必须先成为受控资产或 Data URL，且使用同尺寸 PNG，Mask 必须带 alpha 通道。单个及合计受控输入均限制为 50 MB。每个任务会记录源资产、Mask、操作类型、父资产和 Provider 路由。Web 生图面板可直接选择参考图生成、编辑、扩图或变体，局部编辑器会生成带 alpha 通道的 PNG Mask。
+
 为兼容原画布，`status` 保留 `pending`、`running`、`completed`、`failed` 和 `cancelled`；跨引擎字段 `canonical_status` 统一为 `pending`、`running`、`success`、`error` 和 `cancelled`。任务、路由事件和图片元数据会持久化；服务重启后仍可查询。重启时尚未结束的任务会标记为中断失败，可通过 retry 创建新任务。
 
 ## Hermes Agent 插件
@@ -99,7 +101,7 @@ cp -R integrations/hermes/beemax-canvas "$HOME/.hermes/plugins/beemax-canvas"
 ~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main plugins enable beemax-canvas
 ```
 
-新 Hermes 会话会注册画布状态、Bridge 生图、Hermes 生图并导入、独立导入、任务查询/取消/重试和打开浏览器等工具。组合工具默认复用 Hermes 当前 `image_generate` Provider；没有配置或调用失败时回退 BeeMax Bridge。插件不修改 Hermes 核心和原有 Provider 配置。详细工具与环境变量见 `integrations/hermes/beemax-canvas/README.md`。
+新 Hermes 会话会注册画布状态、文生图、参考图生成、整图编辑、Mask、扩图、变体、独立导入、任务查询/取消/重试和打开浏览器等工具。文生图组合工具默认复用 Hermes 当前 `image_generate` Provider；没有配置或调用失败时回退 BeeMax Bridge。高级图片操作走 Bridge 的能力路由。插件不修改 Hermes 核心和原有 Provider 配置。详细工具与环境变量见 `integrations/hermes/beemax-canvas/README.md`。
 
 ## 验证
 

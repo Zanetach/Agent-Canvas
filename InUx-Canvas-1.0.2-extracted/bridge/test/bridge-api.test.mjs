@@ -16,6 +16,10 @@ const PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xy4uAAAAAElFTkSuQmCC",
   "base64",
 );
+const RGB_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC";
+const WIDE_ALPHA_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAC0lEQVR4nGNggAIAAAkAAftSuKkAAAAASUVORK5CYII=";
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -198,6 +202,529 @@ test("Codex failure falls back to relay and records both route attempts", async 
   }
 });
 
+test("capabilities publish the complete image operation contract", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: {
+          generate: true,
+          edit: true,
+          mask: true,
+          outpaint: true,
+          variation: true,
+          references: 10,
+          cancel: true,
+        },
+        async generate() {
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const capabilities = await fetch(`${baseUrl}/api/beemax/capabilities`).then(
+      (response) => response.json(),
+    );
+    assert.deepEqual(capabilities.image.operations, [
+      "generate",
+      "edit",
+      "mask",
+      "outpaint",
+      "variation",
+    ]);
+    assert.equal(capabilities.image.inputs.local_file, true);
+    assert.equal(capabilities.image.inputs.canvas_asset, true);
+    assert.equal(capabilities.image.inputs.url, true);
+    assert.equal(capabilities.image.inputs.data_url, true);
+    assert.equal(capabilities.image.max_reference_images, 10);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("edit requests preserve operation, source provenance, and parent relationship", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  let providerPayload;
+  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, edit: true, references: 10 },
+        async generate(payload) {
+          providerPayload = payload;
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "edit",
+        prompt: "turn the bee blue",
+        input_images: [
+          { url: source, asset_id: "asset-source-1", node_id: "node-source-1" },
+        ],
+        parent_asset_id: "asset-source-1",
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+
+    assert.equal(providerPayload.operation, "edit");
+    assert.equal(providerPayload.input_images.length, 1);
+    assert.equal(providerPayload.input_images[0].url, source);
+    assert.equal(task.generation.operation, "edit");
+    assert.equal(task.source_assets[0].asset_id, "asset-source-1");
+    assert.equal(task.source_assets[0].node_id, "node-source-1");
+    assert.equal(task.parent_asset_id, "asset-source-1");
+    assert.equal(task.media_records[0].operation, "edit");
+    assert.equal(task.media_records[0].parent_asset_id, "asset-source-1");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("unsupported operations fail before a task is created", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "generate-only",
+        capabilities: { generate: true, edit: false, mask: false, references: 0 },
+        async generate() {
+          throw new Error("must not run");
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const response = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "mask",
+        prompt: "replace the marked area",
+        input_images: [`data:image/png;base64,${PNG_BYTES.toString("base64")}`],
+        mask_image: `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 422);
+    assert.equal(body.success, false);
+    assert.match(body.error, /没有 Provider 支持 mask/);
+    assert.equal(body.required_capability.operation, "mask");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("reference generation skips providers without reference input capability", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const routeCalls = [];
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "generate-only",
+        capabilities: { generate: true, references: 0 },
+        async generate() {
+          routeCalls.push("generate-only");
+          throw new Error("must not run");
+        },
+      },
+      {
+        id: "codex-native",
+        capabilities: { generate: true, references: 10 },
+        async generate() {
+          routeCalls.push("codex-native");
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "generate",
+        prompt: "generate from this reference",
+        input_images: [source],
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+
+    assert.equal(task.canonical_status, "success");
+    assert.deepEqual(routeCalls, ["codex-native"]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("image requests reject more than ten reference images", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "unused",
+        async generate() {
+          throw new Error("must not run");
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+    const response = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "edit",
+        prompt: "combine these references",
+        input_images: Array.from({ length: 11 }, () => source),
+      }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 422);
+    assert.equal(body.success, false);
+    assert.match(body.error, /参考图最多 10 张/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Canvas image assets over fifty megabytes are rejected before download", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  let providerCalls = 0;
+  const upstream = createServer((_request, response) => {
+    response.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": String(50 * 1024 * 1024 + 1),
+    });
+    response.end();
+  });
+  const upstreamUrl = await listen(upstream);
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, edit: true, references: 10 },
+        async generate() {
+          providerCalls += 1;
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "edit",
+        prompt: "edit an oversized source",
+        input_images: ["/uploads/oversized.png"],
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+
+    assert.equal(task.canonical_status, "error");
+    assert.match(task.error.message, /超过 50 MB/);
+    assert.equal(providerCalls, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("mask requests require an alpha PNG matching the source dimensions", async () => {
+  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  for (const [mask, expectedError] of [
+    [RGB_PNG_DATA_URL, /alpha 通道/],
+    [WIDE_ALPHA_PNG_DATA_URL, /尺寸必须一致/],
+  ]) {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+    let providerCalls = 0;
+    const server = createBridgeServer({
+      dataDir,
+      providers: [
+        {
+          id: "codex-native",
+          capabilities: { generate: true, mask: true, references: 10 },
+          async generate() {
+            providerCalls += 1;
+            return { bytes: PNG_BYTES, contentType: "image/png" };
+          },
+        },
+      ],
+    });
+
+    try {
+      const baseUrl = await listen(server);
+      const submitted = await fetch(`${baseUrl}/api/image`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "mask",
+          prompt: "replace only the masked area",
+          input_images: [source],
+          mask_image: mask,
+        }),
+      }).then((response) => response.json());
+      const task = await waitForTask(baseUrl, submitted.task_id);
+
+      assert.equal(task.canonical_status, "error");
+      assert.match(task.error.message, expectedError);
+      assert.equal(providerCalls, 0);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("mask requests reject uncontrolled remote source and mask URLs", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, mask: true, references: 10 },
+        async generate() {
+          throw new Error("must not run");
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const response = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "mask",
+        prompt: "edit the masked area",
+        input_images: ["https://example.com/source.png"],
+        mask_image: "https://example.com/mask.png",
+      }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 422);
+    assert.match(body.error, /必须先上传为 Canvas 资产/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("direct Codex provider sends reference images and mask to the Responses tool", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-provider-test-"));
+  const authFile = path.join(dataDir, "codex-auth.json");
+  const claims = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+  ).toString("base64url");
+  await writeFile(
+    authFile,
+    JSON.stringify({ tokens: { access_token: `header.${claims}.signature` } }),
+  );
+  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  let received;
+  const codexApi = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    received = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `data: ${JSON.stringify({ item: { type: "image_generation_call", result: PNG_BYTES.toString("base64") } })}\n\n`,
+    );
+  });
+  const origin = await listen(codexApi);
+  const provider = createDirectCodexProvider({ authFile, baseUrl: origin, timeoutMs: 1_000 });
+
+  try {
+    const generated = await provider.generate(
+      {
+        operation: "mask",
+        prompt: "replace the marked area with blue circuitry",
+        input_images: [{ url: source }, { url: source }],
+        mask_image: { url: source },
+        quality: "high",
+        size: "1:1",
+      },
+      { signal: new AbortController().signal },
+    );
+    assert.deepEqual(generated.bytes, PNG_BYTES);
+    assert.equal(provider.capabilities.edit, true);
+    assert.equal(provider.capabilities.mask, true);
+    assert.equal(provider.capabilities.outpaint, true);
+    assert.equal(provider.capabilities.variation, true);
+    assert.equal(provider.capabilities.references, 10);
+    assert.deepEqual(
+      received.input[0].content.map((item) => item.type),
+      ["input_text", "input_image", "input_image"],
+    );
+    assert.equal(received.input[0].content[1].image_url, source);
+    assert.equal(received.tools[0].input_image_mask.image_url, source);
+
+    await provider.generate(
+      {
+        operation: "outpaint",
+        prompt: "continue the blue circuit background",
+        input_images: [{ url: source }],
+        resolution: "4k",
+        size: "16:9",
+      },
+      { signal: new AbortController().signal },
+    );
+    assert.equal(received.tools[0].size, "3840x2160");
+    assert.match(received.input[0].content[0].text, /^Outpaint the first input image/);
+
+    await provider.generate(
+      {
+        operation: "variation",
+        prompt: "try a more minimal composition",
+        input_images: [{ url: source }],
+        size: "1:1",
+      },
+      { signal: new AbortController().signal },
+    );
+    assert.match(received.input[0].content[0].text, /^Create a distinct but close variation/);
+  } finally {
+    await new Promise((resolve) => codexApi.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Canvas asset URLs are converted to private data URLs before provider dispatch", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  let upstreamOrigin = "";
+  const upstream = createServer((request, response) => {
+    if (request.url === "/uploads/images/source.png") {
+      response.writeHead(200, { "content-type": "image/png" });
+      response.end(PNG_BYTES);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  upstreamOrigin = await listen(upstream);
+  let providerPayload;
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl: upstreamOrigin,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, edit: true, references: 10 },
+        async generate(payload) {
+          providerPayload = payload;
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "edit",
+        prompt: "make the logo blue",
+        input_images: ["/uploads/images/source.png"],
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+
+    assert.equal(task.status, "completed");
+    assert.equal(
+      providerPayload.input_images[0].url,
+      `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+    );
+    assert.equal(task.source_assets[0].url, "/uploads/images/source.png");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("legacy Canvas annotation payload is promoted to a native mask operation", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  let providerPayload;
+  const server = createBridgeServer({
+    dataDir,
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, edit: true, mask: true, references: 10 },
+        async generate(payload) {
+          providerPayload = payload;
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: "请基于参考图进行局部编辑。遮罩规则：白色区域是需要修改的区域，黑色区域必须保持原图不变。",
+        image_urls: [source, source],
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+
+    assert.equal(task.status, "completed");
+    assert.equal(task.generation.operation, "mask");
+    assert.equal(providerPayload.input_images.length, 1);
+    assert.equal(providerPayload.mask_image.url, source);
+    assert.match(task.mask_asset.url, /\[redacted\]$/);
+    assert.deepEqual(task.media_records[0].mask_asset, task.mask_asset);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("a running image task can be cancelled through the public task API", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
   let providerWasAborted = false;
@@ -286,10 +813,14 @@ test("Codex command provider uses agent auth without receiving an API key", asyn
       }));
     `,
   ];
+  const provider = createCommandCodexProvider({ command });
+  assert.equal(provider.capabilities.generate, true);
+  assert.equal(provider.capabilities.edit, false);
+  assert.equal(provider.capabilities.references, 0);
   const server = createBridgeServer({
     dataDir,
     publicOrigin: "http://127.0.0.1:9999",
-    providers: [createCommandCodexProvider({ command })],
+    providers: [provider],
   });
 
   try {
@@ -352,7 +883,7 @@ test("direct Codex provider only needs Codex CLI auth and the Responses endpoint
     const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     assert.equal(payload.tools[0].model, "gpt-image-2");
     assert.equal(payload.tools[0].quality, "high");
-    assert.equal(payload.tools[0].size, "1536x1024");
+    assert.equal(payload.tools[0].size, "1536x864");
 
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end(

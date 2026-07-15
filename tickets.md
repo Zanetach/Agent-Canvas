@@ -24,12 +24,12 @@
 
 **Blocked by:** BeeMax Bridge 文生图主链与 Provider 路由.
 
-- [ ] 统一协议支持 generate、edit、mask、outpaint、variation 和多参考图输入。
-- [ ] 输入支持本地文件、画布节点、URL 和 Base64，并统一转为受控资产引用。
-- [ ] Provider 能力不足时，在提交前返回可理解的能力错误或选择支持该能力的 fallback。
-- [ ] 编辑结果保留源图片、Mask、提示词、模型参数、Provider 和父子关系。
+- [x] 统一协议支持 generate、edit、mask、outpaint、variation 和多参考图输入。
+- [x] 输入支持本地文件、画布节点、URL 和 Base64，并统一转为受控资产引用。
+- [x] Provider 能力不足时，在提交前返回可理解的能力错误或选择支持该能力的 fallback。
+- [x] 编辑结果保留源图片、Mask、提示词、模型参数、Provider 和父子关系。
 - [ ] 批量结果可以预览、多选、插入画布、再次编辑和重新生成。
-- [ ] 覆盖参考图、透明 Mask、比例转换、多图、能力降级和大文件限制测试。
+- [x] 覆盖参考图、透明 Mask、比例转换、多图、能力降级和大文件限制测试。
 
 ## Pi 原生 Extension 生图闭环
 

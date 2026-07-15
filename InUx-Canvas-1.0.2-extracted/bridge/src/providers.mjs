@@ -21,6 +21,63 @@ function aspectRatio(value) {
   return "square";
 }
 
+function codexImageSize(value, resolution = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  const explicit = normalized.match(/^(\d+)\s*x\s*(\d+)$/);
+  if (explicit) {
+    const width = Number(explicit[1]);
+    const height = Number(explicit[2]);
+    const pixels = width * height;
+    if (
+      width % 16 !== 0 ||
+      height % 16 !== 0 ||
+      Math.max(width, height) > 3840 ||
+      Math.max(width, height) / Math.min(width, height) > 3 ||
+      pixels < 655_360 ||
+      pixels > 8_294_400
+    ) {
+      throw new Error("GPT Image 2 尺寸必须为 16 的倍数、边长不超过 3840、比例不超过 3:1，且总像素在 655360–8294400 之间");
+    }
+    return `${width}x${height}`;
+  }
+
+  let ratio = 1;
+  if (normalized === "landscape") ratio = 3 / 2;
+  else if (normalized === "portrait") ratio = 2 / 3;
+  else {
+    const match = normalized.match(/^(\d+(?:\.\d+)?)\s*[:x]\s*(\d+(?:\.\d+)?)$/);
+    if (match) ratio = Number(match[1]) / Number(match[2]);
+  }
+  ratio = Math.max(1 / 3, Math.min(3, ratio));
+  const tier = String(resolution || "").toLowerCase();
+  const longEdge = tier === "4k" ? 3840 : tier === "2k" ? 2048 : ratio === 1 ? 1024 : 1536;
+  let width = ratio >= 1 ? longEdge : longEdge * ratio;
+  let height = ratio >= 1 ? longEdge / ratio : longEdge;
+  const maxPixels = 8_294_400;
+  if (width * height > maxPixels) {
+    const scale = Math.sqrt(maxPixels / (width * height));
+    width *= scale;
+    height *= scale;
+  }
+  width = Math.max(16, Math.round(width / 16) * 16);
+  height = Math.max(16, Math.round(height / 16) * 16);
+  return `${width}x${height}`;
+}
+
+function operationPrompt(payload) {
+  const prompt = String(payload.prompt || "").trim();
+  if (payload.operation === "variation") {
+    return `Create a distinct but close variation of the first input image. Preserve its identity, subject, and visual language while varying composition or details. ${prompt}`.trim();
+  }
+  if (payload.operation === "outpaint") {
+    return `Outpaint the first input image to fill the requested output dimensions. Preserve the original image content and extend the surrounding scene naturally beyond its existing boundaries. ${prompt}`.trim();
+  }
+  if (payload.operation === "edit") {
+    return `Edit the supplied image while preserving all details not requested to change. ${prompt}`.trim();
+  }
+  return prompt;
+}
+
 function codexImageModel(model, quality) {
   const requested = String(model || "").trim();
   if (/^gpt-image-2-(low|medium|high)$/.test(requested)) return requested;
@@ -130,9 +187,11 @@ export function createDirectCodexProvider({
     id: "codex-native",
     capabilities: {
       generate: true,
-      edit: false,
-      mask: false,
-      references: 0,
+      edit: true,
+      mask: true,
+      outpaint: true,
+      variation: true,
+      references: 10,
       cancel: true,
       progress: false,
     },
@@ -150,7 +209,6 @@ export function createDirectCodexProvider({
       const aspect = aspectRatio(payload.size || payload.aspect_ratio);
       const model = codexImageModel(payload.model, payload.quality);
       const quality = model.slice("gpt-image-2-".length);
-      const sizes = { landscape: "1536x1024", square: "1024x1024", portrait: "1024x1536" };
       const headers = {
         accept: "text/event-stream",
         authorization: `Bearer ${accessToken}`,
@@ -163,6 +221,31 @@ export function createDirectCodexProvider({
         headers["chatgpt-account-id"] = accountId;
       }
       try {
+        const content = [
+          { type: "input_text", text: operationPrompt(payload) },
+          ...(Array.isArray(payload.input_images)
+            ? payload.input_images.map((reference) => ({
+                type: "input_image",
+                image_url: String(reference.url || reference.image_url || reference),
+              }))
+            : []),
+        ];
+        const imageTool = {
+          type: "image_generation",
+          model: "gpt-image-2",
+          size: codexImageSize(payload.size || payload.aspect_ratio, payload.resolution),
+          quality,
+          output_format: "png",
+          background: "opaque",
+          partial_images: 1,
+        };
+        if (payload.mask_image) {
+          imageTool.input_image_mask = {
+            image_url: String(
+              payload.mask_image.url || payload.mask_image.image_url || payload.mask_image,
+            ),
+          };
+        }
         const response = await fetch(endpoint, {
           method: "POST",
           headers,
@@ -176,19 +259,11 @@ export function createDirectCodexProvider({
               {
                 type: "message",
                 role: "user",
-                content: [{ type: "input_text", text: String(payload.prompt || "") }],
+                content,
               },
             ],
             tools: [
-              {
-                type: "image_generation",
-                model: "gpt-image-2",
-                size: sizes[aspect],
-                quality,
-                output_format: "png",
-                background: "opaque",
-                partial_images: 1,
-              },
+              imageTool,
             ],
             tool_choice: {
               type: "allowed_tools",
@@ -209,6 +284,7 @@ export function createDirectCodexProvider({
             provider: "openai-codex",
             model,
             aspect_ratio: aspect,
+            operation: payload.operation || "generate",
             auth_source: "codex-cli",
           },
         };
@@ -284,7 +360,12 @@ function parseProviderOutput(output) {
   throw new Error("Codex Provider 未返回合法 JSON");
 }
 
-export function createCommandCodexProvider({ command, env = {}, timeoutMs = 300_000 } = {}) {
+export function createCommandCodexProvider({
+  command,
+  env = {},
+  timeoutMs = 300_000,
+  capabilities = {},
+} = {}) {
   if (!Array.isArray(command) || command.length === 0) {
     throw new Error("command Codex provider requires a command array");
   }
@@ -295,16 +376,22 @@ export function createCommandCodexProvider({ command, env = {}, timeoutMs = 300_
       generate: true,
       edit: false,
       mask: false,
+      outpaint: false,
+      variation: false,
       references: 0,
       cancel: true,
       progress: false,
+      ...capabilities,
     },
     async generate(payload, { signal, task }) {
       const input = {
+        operation: String(payload.operation || "generate"),
         prompt: String(payload.prompt || ""),
         model: codexImageModel(payload.model, payload.quality),
         aspect_ratio: aspectRatio(payload.size || payload.aspect_ratio),
         quality: String(payload.quality || ""),
+        input_images: Array.isArray(payload.input_images) ? payload.input_images : [],
+        mask_image: payload.mask_image || null,
         output_path: path.join(tmpdir(), `${task.task_id}.png`),
       };
       const attempt = new AbortController();

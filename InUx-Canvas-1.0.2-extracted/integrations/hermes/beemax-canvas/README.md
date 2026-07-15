@@ -7,7 +7,20 @@
 - `beemax_generate_and_import` 默认先调用 Hermes 已配置的 `image_generate` Provider，再把结果导入画布。
 - Hermes 未配置生图 Provider 或调用失败时，默认回退到 BeeMax Bridge；Bridge 当前按 Codex Provider → 原中转站 Provider 的顺序路由。
 - `beemax_generate_image` 可显式直接调用 BeeMax Bridge。
-- 当前版本优先完成文生图、图片导入、任务查询/取消/重试和打开 Web 画布；参考图编辑能力需要 Bridge 后续提供统一编辑协议。
+- 高级图片操作（参考图生成、整图编辑、Mask、扩图、变体）直接调用 BeeMax Bridge 的能力路由，因为 Hermes 内置 `image_generate` 当前只提供文生图参数。
+
+## 图片能力
+
+| Hermes 工具 | 能力 |
+| --- | --- |
+| `beemax_generate_image` | 文生图 |
+| `beemax_generate_from_references` | 1–10 张高保真参考图生成 |
+| `beemax_edit_image` | 整图编辑 |
+| `beemax_mask_edit` | Alpha PNG Mask 局部重绘 |
+| `beemax_outpaint_image` | 按目标比例/1K–4K 扩图 |
+| `beemax_create_variation` | 高保真参考图变体 |
+
+本地文件会先导入 Canvas 资产库，再提交给 Bridge。也可直接传 Canvas 资产路径、HTTP(S) URL 或图片 Data URL。所有高级操作完成后都会把结果导入 Canvas。
 
 ## 配置
 
@@ -31,6 +44,8 @@ export BEEMAX_CANVAS_URL=http://127.0.0.1:17851
 
 ```text
 检查 BeeMax Canvas 状态。
-用 Hermes 生图引擎生成一张科技蓝蜜蜂 Logo，并导入 BeeMax Canvas。
+参考这两张产品图生成一张科技蓝广告图，并导入 BeeMax Canvas。
+把这张图片中 Mask 的透明区域改成蓝色电路纹理。
+把这张方图扩成 16:9 的 4K 横图。
 打开 BeeMax Canvas 网页。
 ```

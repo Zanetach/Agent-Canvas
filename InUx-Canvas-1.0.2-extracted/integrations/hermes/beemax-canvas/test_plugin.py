@@ -135,6 +135,11 @@ class BeeMaxCanvasPluginTests(unittest.TestCase):
                 "beemax_canvas_status",
                 "beemax_generate_image",
                 "beemax_generate_and_import",
+                "beemax_generate_from_references",
+                "beemax_edit_image",
+                "beemax_mask_edit",
+                "beemax_outpaint_image",
+                "beemax_create_variation",
                 "beemax_import_image",
                 "beemax_task_status",
                 "beemax_cancel_task",
@@ -158,6 +163,59 @@ class BeeMaxCanvasPluginTests(unittest.TestCase):
         self.assertEqual(result["task"]["canonical_status"], "success")
         self.assertEqual(result["image_urls"], ["/beemax-assets/generated.png"])
         self.assertEqual(self.server.last_image_payload["size"], "16:9")
+
+    def test_advanced_image_tools_submit_canonical_operations(self):
+        cases = [
+            (self.plugin.handle_generate_from_references, "generate", {}),
+            (self.plugin.handle_edit_image, "edit", {}),
+            (
+                self.plugin.handle_mask_edit,
+                "mask",
+                {"mask_image": "https://example.com/mask.png"},
+            ),
+            (self.plugin.handle_outpaint_image, "outpaint", {}),
+            (self.plugin.handle_create_variation, "variation", {}),
+        ]
+        for handler, operation, extra in cases:
+            with self.subTest(operation=operation, handler=handler.__name__):
+                result = self.call(
+                    handler,
+                    {
+                        "prompt": "preserve the bee and use technology blue",
+                        "input_images": ["https://example.com/source.png"],
+                        "wait": True,
+                        **extra,
+                    },
+                )
+                self.assertTrue(result["success"])
+                self.assertEqual(self.server.last_image_payload["operation"], operation)
+                self.assertEqual(
+                    self.server.last_image_payload["input_images"],
+                    [{"url": "/uploads/images/imported.png"}],
+                )
+        self.assertEqual(
+            self.server.last_image_payload["input_images"],
+            [{"url": "/uploads/images/imported.png"}],
+        )
+
+    def test_advanced_image_tool_uploads_absolute_local_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "reference.png"
+            image_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            result = self.call(
+                self.plugin.handle_create_variation,
+                {
+                    "prompt": "keep the bee and make a close variation",
+                    "input_images": [str(image_path)],
+                    "wait": True,
+                },
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            self.server.last_image_payload["input_images"],
+            [{"url": "/uploads/images/local.png"}],
+        )
 
     def test_imports_local_file_and_remote_url(self):
         with tempfile.TemporaryDirectory() as temp_dir:

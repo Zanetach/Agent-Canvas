@@ -1,15 +1,19 @@
 name: beemax-canvas
-version: 0.1.0
-description: "Hermes Agent tools for BeeMax Canvas image generation, import, task control, and browser launch."
+version: 0.2.0
+description: "Hermes Agent tools for BeeMax Canvas generation, reference workflows, edits, masks, outpainting, variations, import, and task control."
 author: BeeMax
 kind: standalone
 provides_tools:
   - beemax_canvas_status
   - beemax_generate_image
   - beemax_generate_and_import
+  - beemax_generate_from_references
+  - beemax_edit_image
+  - beemax_mask_edit
+  - beemax_outpaint_image
+  - beemax_create_variation
   - beemax_import_image
   - beemax_task_status
   - beemax_cancel_task
   - beemax_retry_task
   - beemax_open_canvas
-

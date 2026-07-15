@@ -28947,6 +28947,7 @@ function F_({
     [P, F] = (0, v.useState)(``),
     [I, L] = (0, v.useState)(``),
     [R, z] = (0, v.useState)(!1),
+    [ve, he] = (0, v.useState)(() => (n.length > 0 ? `edit` : `generate`)),
     B = (0, v.useRef)(null),
     V = (0, v.useCallback)((e) => {
       d((t) => C_(t, e));
@@ -29053,6 +29054,7 @@ function F_({
           payload: {
             api_base_url: te?.baseUrl || ``,
             api_key: te?.apiKey || ``,
+            operation: ve,
             prompt: O_(u, f),
             model: re,
             size: E,
@@ -29076,7 +29078,7 @@ function F_({
           (t = `无法连接到后端 API。请确认后端服务是否启动。`),
           oe(t));
       }
-    }, [A, E, O, f, c, l, u, U, ae, te, re, oe]),
+    }, [A, E, O, f, c, l, u, U, ae, te, re, oe, ve]),
     q = (0, v.useCallback)(async (e, t) => {
       if (e)
         try {
@@ -29323,6 +29325,33 @@ function F_({
             (0, Q.jsxs)(`div`, {
               className: `storyboard-generator-inline-settings`,
               children: [
+                (0, Q.jsx)(`select`, {
+                  className: `storyboard-generator-res-select`,
+                  value: ve,
+                  onChange: (e) => he(e.target.value),
+                  title: `图片操作`,
+                  children: [
+                    (0, Q.jsx)(`option`, {
+                      value: `generate`,
+                      children: U.length > 0 ? `参考图生成` : `文生图`,
+                    }),
+                    (0, Q.jsx)(`option`, {
+                      value: `edit`,
+                      disabled: U.length === 0,
+                      children: `图片编辑`,
+                    }),
+                    (0, Q.jsx)(`option`, {
+                      value: `outpaint`,
+                      disabled: U.length === 0,
+                      children: `扩图`,
+                    }),
+                    (0, Q.jsx)(`option`, {
+                      value: `variation`,
+                      disabled: U.length === 0,
+                      children: `生成变体`,
+                    }),
+                  ],
+                }),
                 (0, Q.jsx)(s_, {
                   styles: a,
                   disabled: S === `running` || b,
@@ -29428,7 +29457,11 @@ function F_({
             (0, Q.jsxs)(`button`, {
               className: `modal-btn confirm`,
               onClick: K,
-              disabled: S === `running` || b || !u.trim(),
+              disabled:
+                S === `running` ||
+                b ||
+                !u.trim() ||
+                (ve !== `generate` && U.length === 0),
               children: [
                 (0, Q.jsx)($, {
                   name: S === `running` ? `loader` : `play`,
@@ -30535,13 +30568,17 @@ function xv({
       if (!e) return ``;
       let t = document.createElement(`canvas`);
       ((t.width = e.width), (t.height = e.height));
-      let n = t.getContext(`2d`);
-      return (
-        (n.fillStyle = `#000`),
-        n.fillRect(0, 0, t.width, t.height),
-        n.drawImage(e, 0, 0),
-        t.toDataURL(`image/png`)
-      );
+      let n = t.getContext(`2d`),
+        r = e.getContext(`2d`).getImageData(0, 0, e.width, e.height),
+        i = n.createImageData(e.width, e.height);
+      for (let e = 0; e < r.data.length; e += 4) {
+        let t = Math.max(r.data[e], r.data[e + 1], r.data[e + 2]);
+        ((i.data[e] = 0),
+          (i.data[e + 1] = 0),
+          (i.data[e + 2] = 0),
+          (i.data[e + 3] = 255 - Math.round((t * r.data[e + 3]) / 255)));
+      }
+      return (n.putImageData(i, 0, 0), t.toDataURL(`image/png`));
     }, []),
     B = (0, v.useCallback)(() => {
       let e = g.trim();

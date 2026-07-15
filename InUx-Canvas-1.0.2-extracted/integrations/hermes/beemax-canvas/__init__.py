@@ -183,13 +183,28 @@ def bridge_generate(args: dict[str, Any]) -> dict[str, Any]:
     if not prompt:
         raise ValueError("prompt 不能为空")
     payload = {
+        "operation": str(args.get("operation") or "generate"),
         "prompt": prompt,
         "size": str(args.get("aspect_ratio") or args.get("size") or "1:1"),
         "n": max(1, min(4, int(args.get("n") or 1))),
         "async_mode": True,
     }
-    optional_fields = ("model", "quality", "project_id", "node_id", "run_id", "parent_id", "batch_id")
+    optional_fields = (
+        "model",
+        "quality",
+        "resolution",
+        "project_id",
+        "node_id",
+        "run_id",
+        "parent_id",
+        "parent_asset_id",
+        "batch_id",
+    )
     payload.update({key: args[key] for key in optional_fields if args.get(key) not in (None, "")})
+    if args.get("input_images"):
+        payload["input_images"] = args["input_images"]
+    if args.get("mask_image"):
+        payload["mask_image"] = args["mask_image"]
     response = _request_json("POST", "/api/image", payload=payload, timeout=_timeout(args, 30.0))
     task_id = str(response.get("task_id") or "")
     if not response.get("success") or not task_id:
@@ -264,6 +279,67 @@ def handle_generate_image(args: dict[str, Any], **_kwargs: Any) -> str:
         return _result(bridge_generate(args))
     except Exception as exc:
         return _error(str(exc))
+
+
+def _prepare_image_reference(value: Any) -> dict[str, Any]:
+    reference = dict(value) if isinstance(value, dict) else {"url": str(value or "")}
+    source = str(reference.get("url") or reference.get("source") or "").strip()
+    if not source:
+        raise ValueError("图片引用不能为空")
+    local_path = Path(source).expanduser()
+    if local_path.is_file():
+        imported = import_image(str(local_path.resolve()), timeout=30.0)
+        source = str(imported["asset"]["url"])
+        if imported["asset"].get("id"):
+            reference["asset_id"] = imported["asset"]["id"]
+    elif source.startswith(("http://", "https://")):
+        imported = import_image(source, timeout=30.0)
+        source = str(imported["asset"]["url"])
+        if imported["asset"].get("id"):
+            reference["asset_id"] = imported["asset"]["id"]
+    elif not source.startswith(("data:image/", "/")):
+        imported = import_image(source, timeout=30.0)
+        source = str(imported["asset"]["url"])
+        if imported["asset"].get("id"):
+            reference["asset_id"] = imported["asset"]["id"]
+    reference.pop("source", None)
+    reference["url"] = source
+    return reference
+
+
+def _handle_advanced_operation(args: dict[str, Any], operation: str) -> str:
+    try:
+        input_images = [_prepare_image_reference(value) for value in (args.get("input_images") or [])]
+        if not input_images:
+            return _error(f"{operation} 至少需要一张 input_images")
+        request = {**args, "operation": operation, "input_images": input_images}
+        if args.get("mask_image"):
+            request["mask_image"] = _prepare_image_reference(args["mask_image"])
+        return _result(bridge_generate_and_import(request))
+    except Exception as exc:
+        return _error(str(exc), operation=operation)
+
+
+def handle_generate_from_references(args: dict[str, Any], **_kwargs: Any) -> str:
+    return _handle_advanced_operation(args, "generate")
+
+
+def handle_edit_image(args: dict[str, Any], **_kwargs: Any) -> str:
+    return _handle_advanced_operation(args, "edit")
+
+
+def handle_mask_edit(args: dict[str, Any], **_kwargs: Any) -> str:
+    if not args.get("mask_image"):
+        return _error("mask_image 不能为空", operation="mask")
+    return _handle_advanced_operation(args, "mask")
+
+
+def handle_outpaint_image(args: dict[str, Any], **_kwargs: Any) -> str:
+    return _handle_advanced_operation(args, "outpaint")
+
+
+def handle_create_variation(args: dict[str, Any], **_kwargs: Any) -> str:
+    return _handle_advanced_operation(args, "variation")
 
 
 def handle_import_image(args: dict[str, Any], **_kwargs: Any) -> str:
@@ -377,6 +453,35 @@ PROMPT = {"type": "string", "description": "Image generation prompt."}
 ASPECT = {"type": "string", "description": "Aspect ratio such as 1:1, 16:9, 3:4, or 9:16."}
 WAIT = {"type": "boolean", "description": "Wait for the asynchronous task to finish. Defaults to true."}
 TIMEOUT = {"type": "number", "description": "Request or task timeout in seconds."}
+IMAGE_INPUTS = {
+    "type": "array",
+    "items": {"type": "string"},
+    "minItems": 1,
+    "maxItems": 10,
+    "description": "Local image paths, Canvas asset paths, HTTP(S) URLs, or image Data URLs.",
+}
+
+
+def _advanced_schema(description: str, *, mask: bool = False) -> dict[str, Any]:
+    properties = {
+        "prompt": PROMPT,
+        "input_images": IMAGE_INPUTS,
+        "aspect_ratio": ASPECT,
+        "resolution": {"type": "string", "enum": ["1k", "2k", "4k"]},
+        "quality": {"type": "string", "enum": ["low", "medium", "high"]},
+        "project_id": {"type": "string"},
+        "node_id": {"type": "string"},
+        "parent_asset_id": {"type": "string"},
+        "timeout_seconds": TIMEOUT,
+    }
+    required = ["prompt", "input_images"]
+    if mask:
+        properties["mask_image"] = {
+            "type": "string",
+            "description": "PNG mask with an alpha channel; transparent pixels are edited.",
+        }
+        required.append("mask_image")
+    return _schema(description, properties, required)
 
 TOOLS = (
     (
@@ -422,6 +527,36 @@ TOOLS = (
         ),
         handle_generate_and_import,
         "🐝",
+    ),
+    (
+        "beemax_generate_from_references",
+        _advanced_schema("Generate a new image from one to ten high-fidelity reference images and import it into BeeMax Canvas."),
+        handle_generate_from_references,
+        "🖼️",
+    ),
+    (
+        "beemax_edit_image",
+        _advanced_schema("Edit an existing image with a prompt while preserving unrequested details, then import the result."),
+        handle_edit_image,
+        "✏️",
+    ),
+    (
+        "beemax_mask_edit",
+        _advanced_schema("Edit only the area selected by an alpha PNG mask and import the result.", mask=True),
+        handle_mask_edit,
+        "🎭",
+    ),
+    (
+        "beemax_outpaint_image",
+        _advanced_schema("Extend an image beyond its original boundaries to a requested aspect ratio or resolution."),
+        handle_outpaint_image,
+        "↔️",
+    ),
+    (
+        "beemax_create_variation",
+        _advanced_schema("Create a close high-fidelity variation of an image and import it into BeeMax Canvas."),
+        handle_create_variation,
+        "🔀",
     ),
     (
         "beemax_import_image",

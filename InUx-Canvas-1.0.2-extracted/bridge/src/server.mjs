@@ -8,6 +8,16 @@ import { spawn } from "node:child_process";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
+const IMAGE_OPERATIONS = Object.freeze([
+  "generate",
+  "edit",
+  "mask",
+  "outpaint",
+  "variation",
+]);
+const MAX_REFERENCE_IMAGES = 10;
+const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
+const MAX_TOTAL_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MANAGED_CODEX_PROVIDER = Object.freeze({
   id: "beemax-codex-agent",
   name: "BeeMax Codex Agent",
@@ -122,6 +132,153 @@ function requestedRatio(value) {
   return Number.isFinite(ratio) && ratio > 0 ? ratio : 0;
 }
 
+function normalizeImageReference(value, index) {
+  const reference = typeof value === "string" ? { url: value } : value;
+  if (!reference || typeof reference !== "object") {
+    const error = new Error(`input_images[${index}] 必须是 URL 字符串或图片引用对象`);
+    error.statusCode = 422;
+    throw error;
+  }
+  const url = String(reference.url || reference.image_url || "").trim();
+  if (!url) {
+    const error = new Error(`input_images[${index}] 缺少 url`);
+    error.statusCode = 422;
+    throw error;
+  }
+  if (
+    !url.startsWith("data:image/") &&
+    !url.startsWith("http://") &&
+    !url.startsWith("https://") &&
+    !url.startsWith("/")
+  ) {
+    const error = new Error(`input_images[${index}] 只支持 Canvas 资产路径、HTTP(S) URL 或图片 Data URL`);
+    error.statusCode = 422;
+    throw error;
+  }
+  return {
+    url,
+    asset_id: String(reference.asset_id || reference.assetId || ""),
+    node_id: String(reference.node_id || reference.nodeId || ""),
+    role: String(reference.role || (index === 0 ? "source" : "reference")),
+  };
+}
+
+function canonicalImagePayload(payload) {
+  const legacyImages = payload.input_images || payload.image_urls || payload.reference_images || [];
+  const rawImages = Array.isArray(legacyImages) ? legacyImages : [legacyImages].filter(Boolean);
+  if (rawImages.length > MAX_REFERENCE_IMAGES) {
+    const error = new Error(`参考图最多 ${MAX_REFERENCE_IMAGES} 张`);
+    error.statusCode = 422;
+    throw error;
+  }
+  let inputImages = rawImages.map(normalizeImageReference);
+  let maskImage = payload.mask_image
+    ? normalizeImageReference(payload.mask_image, "mask")
+    : null;
+  let operation = String(payload.operation || "").trim().toLowerCase();
+  const legacyMask =
+    !operation &&
+    !maskImage &&
+    inputImages.length >= 2 &&
+    /遮罩规则：白色区域|black and white mask/i.test(String(payload.prompt || ""));
+  if (legacyMask) {
+    maskImage = inputImages.at(-1);
+    inputImages = inputImages.slice(0, -1);
+  }
+  if (!operation) operation = maskImage ? "mask" : inputImages.length ? "edit" : "generate";
+  if (!IMAGE_OPERATIONS.includes(operation)) {
+    const error = new Error(`operation 必须是 ${IMAGE_OPERATIONS.join(", ")}`);
+    error.statusCode = 422;
+    throw error;
+  }
+  if (operation !== "generate" && inputImages.length === 0) {
+    const error = new Error(`${operation} 操作至少需要一张 input_images`);
+    error.statusCode = 422;
+    throw error;
+  }
+  if (operation === "mask" && !maskImage) {
+    const error = new Error("mask 操作需要 mask_image");
+    error.statusCode = 422;
+    throw error;
+  }
+  if (
+    operation === "mask" &&
+    [inputImages[0], maskImage].some((reference) =>
+      /^https?:\/\//.test(String(reference?.url || "")),
+    )
+  ) {
+    const error = new Error("Mask 与源图片必须先上传为 Canvas 资产或使用图片 Data URL");
+    error.statusCode = 422;
+    throw error;
+  }
+  return {
+    ...payload,
+    operation,
+    input_images: inputImages,
+    mask_image: maskImage,
+  };
+}
+
+function persistedImageReference(reference) {
+  if (!reference) return null;
+  const isDataUrl = reference.url.startsWith("data:image/");
+  return {
+    ...reference,
+    url: isDataUrl ? `${reference.url.slice(0, reference.url.indexOf(",") + 1)}[redacted]` : reference.url,
+  };
+}
+
+function pngInfo(reference) {
+  const match = String(reference?.url || "").match(
+    /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/,
+  );
+  if (!match) return null;
+  const bytes = Buffer.from(match[1], "base64");
+  const signature = bytes.subarray(0, 8).toString("hex");
+  if (
+    signature !== "89504e470d0a1a0a" ||
+    bytes.length < 33 ||
+    bytes.subarray(12, 16).toString("ascii") !== "IHDR"
+  ) {
+    throw new Error("Mask 或源图片不是有效的 PNG");
+  }
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+    colorType: bytes[25],
+  };
+}
+
+function validateMaskPayload(payload) {
+  if (payload.operation !== "mask") return;
+  const maskUrl = String(payload.mask_image?.url || "");
+  if (maskUrl.startsWith("data:image/") && !maskUrl.startsWith("data:image/png;")) {
+    throw new Error("Mask 必须是带 alpha 通道的 PNG");
+  }
+  const mask = pngInfo(payload.mask_image);
+  if (!mask) return;
+  if (![4, 6].includes(mask.colorType)) {
+    throw new Error("Mask PNG 必须包含 alpha 通道");
+  }
+  const sourceUrl = String(payload.input_images[0]?.url || "");
+  if (sourceUrl.startsWith("data:image/") && !sourceUrl.startsWith("data:image/png;")) {
+    throw new Error("Mask 与源图片必须使用相同的 PNG 格式");
+  }
+  const source = pngInfo(payload.input_images[0]);
+  if (source && (source.width !== mask.width || source.height !== mask.height)) {
+    throw new Error("Mask 与源图片的尺寸必须一致");
+  }
+}
+
+function providerSupportsPayload(provider, payload) {
+  const capabilities = provider.capabilities || {};
+  const operation = payload.operation || "generate";
+  if (operation === "generate" && capabilities.generate === false) return false;
+  if (operation !== "generate" && capabilities[operation] !== true) return false;
+  const referenceLimit = Number(capabilities.references || 0);
+  return payload.input_images.length <= referenceLimit;
+}
+
 export function cropDimensions(width, height, requested) {
   const ratio = requestedRatio(requested);
   if (!ratio || !width || !height || Math.abs(width / height - ratio) < 0.01) return null;
@@ -148,6 +305,7 @@ async function normalizeImageAspect(file, requested) {
 }
 
 function createTask(payload) {
+  const inputImages = Array.isArray(payload.input_images) ? payload.input_images : [];
   const taskId = `beemax_image_${Date.now()}_${randomUUID().slice(0, 8)}`;
   return {
     task_id: taskId,
@@ -163,6 +321,9 @@ function createTask(payload) {
     run_id: String(payload.run_id || ""),
     parent_id: String(payload.parent_id || ""),
     batch_id: String(payload.batch_id || ""),
+    parent_asset_id: String(payload.parent_asset_id || ""),
+    source_assets: inputImages.map(persistedImageReference),
+    mask_asset: persistedImageReference(payload.mask_image),
     prompt_summary: String(payload.prompt || "").slice(0, 160),
     provider_id: "",
     provider_protocol: "beemax",
@@ -178,12 +339,15 @@ function createTask(payload) {
     error: null,
     route_events: [],
     generation: {
+      operation: payload.operation,
       prompt: String(payload.prompt || ""),
       model: String(payload.model || ""),
       size: String(payload.size || payload.aspect_ratio || ""),
       resolution: String(payload.resolution || ""),
       quality: String(payload.quality || ""),
       n: Math.max(1, Math.min(4, Math.floor(Number(payload.n) || 1))),
+      input_count: inputImages.length,
+      has_mask: Boolean(payload.mask_image),
     },
   };
 }
@@ -343,6 +507,93 @@ export function createBridgeServer({
     return asset;
   }
 
+  async function materializeImageReference(reference, signal, budget) {
+    if (reference.url.startsWith("data:image/")) {
+      const match = reference.url.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) throw new Error("图片 Data URL 必须是 PNG、JPEG 或 WebP Base64 数据");
+      const bytes = Buffer.from(match[2], "base64");
+      if (!bytes.length || bytes.length > MAX_INPUT_IMAGE_BYTES) {
+        throw new Error("输入图片为空或超过 50 MB 安全限制");
+      }
+      budget.used += bytes.length;
+      if (budget.used > MAX_TOTAL_INPUT_IMAGE_BYTES) {
+        throw new Error("全部输入图片合计超过 50 MB 安全限制");
+      }
+      return reference;
+    }
+    if (!reference.url.startsWith("/")) return reference;
+    const sourceOrigin = reference.url.startsWith("/uploads/") ? upstream : publicOrigin;
+    if (!sourceOrigin) throw new Error(`无法解析 Canvas 图片资产：${reference.url}`);
+    const imageResponse = await fetch(`${sourceOrigin}${reference.url}`, {
+      signal,
+      redirect: "manual",
+    });
+    if (imageResponse.status >= 300 && imageResponse.status < 400) {
+      throw new Error("Canvas 图片资产下载不允许 HTTP 重定向");
+    }
+    if (!imageResponse.ok) {
+      throw new Error(`读取 Canvas 图片资产失败 (HTTP ${imageResponse.status})`);
+    }
+    const contentType = String(imageResponse.headers.get("content-type") || "")
+      .split(";", 1)[0]
+      .toLowerCase();
+    if (!["image/png", "image/jpeg", "image/webp"].includes(contentType)) {
+      throw new Error(`Canvas 图片类型不受支持：${contentType || "unknown"}`);
+    }
+    const contentLength = Number(imageResponse.headers.get("content-length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_INPUT_IMAGE_BYTES) {
+      await imageResponse.body?.cancel();
+      throw new Error("输入图片超过 50 MB 安全限制");
+    }
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > 0 &&
+      budget.used + contentLength > MAX_TOTAL_INPUT_IMAGE_BYTES
+    ) {
+      await imageResponse.body?.cancel();
+      throw new Error("全部输入图片合计超过 50 MB 安全限制");
+    }
+    const byteLimit = Math.min(
+      MAX_INPUT_IMAGE_BYTES,
+      MAX_TOTAL_INPUT_IMAGE_BYTES - budget.used,
+    );
+    const chunks = [];
+    let receivedBytes = 0;
+    if (!imageResponse.body) throw new Error("Canvas 图片资产响应为空");
+    for await (const chunk of imageResponse.body) {
+      receivedBytes += chunk.length;
+      if (receivedBytes > byteLimit) {
+        await imageResponse.body.cancel().catch(() => {});
+        throw new Error("输入图片为空或全部输入图片合计超过 50 MB 安全限制");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    const bytes = Buffer.concat(chunks, receivedBytes);
+    if (!bytes.length) {
+      throw new Error("输入图片为空或超过 50 MB 安全限制");
+    }
+    budget.used += bytes.length;
+    if (budget.used > MAX_TOTAL_INPUT_IMAGE_BYTES) {
+      throw new Error("全部输入图片合计超过 50 MB 安全限制");
+    }
+    return { ...reference, url: `data:${contentType};base64,${bytes.toString("base64")}` };
+  }
+
+  async function materializeProviderPayload(payload, signal) {
+    const budget = { used: 0 };
+    const inputImages = [];
+    for (const reference of payload.input_images) {
+      inputImages.push(await materializeImageReference(reference, signal, budget));
+    }
+    return {
+      ...payload,
+      input_images: inputImages,
+      mask_image: payload.mask_image
+        ? await materializeImageReference(payload.mask_image, signal, budget)
+        : null,
+    };
+  }
+
   function launchTask(task, payload) {
     const controller = new AbortController();
     controllers.set(task.task_id, controller);
@@ -404,6 +655,10 @@ export function createBridgeServer({
       size: payload.size || payload.aspect_ratio || "",
       resolution: payload.resolution || "",
       quality: payload.quality || "",
+      operation: payload.operation,
+      parent_asset_id: task.parent_asset_id,
+      source_assets: task.source_assets,
+      mask_asset: task.mask_asset,
       project_id: task.project_id,
       node_id: task.node_id,
       created_at: task.created_at,
@@ -437,6 +692,8 @@ export function createBridgeServer({
   async function runTask(task, payload, controller) {
     await updateTask(task, { status: "running", canonical_status: "running" });
     if (controller.signal.aborted) return;
+    const providerPayload = await materializeProviderPayload(payload, controller.signal);
+    validateMaskPayload(providerPayload);
     const itemCount = task.generation.n;
     const outputs = [];
     const itemErrors = [];
@@ -444,7 +701,7 @@ export function createBridgeServer({
     for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
         let output = null;
         let lastError = "";
-        for (const provider of providers) {
+        for (const provider of providers.filter((candidate) => providerSupportsPayload(candidate, providerPayload))) {
           const event = {
             item_index: itemIndex,
             provider_id: provider.id,
@@ -455,7 +712,7 @@ export function createBridgeServer({
           await persistTask(task);
           try {
             const generated = await provider.generate(
-              { ...payload, n: 1 },
+              { ...providerPayload, n: 1 },
               { signal: controller.signal, task },
             );
             if (controller.signal.aborted) return;
@@ -521,6 +778,10 @@ export function createBridgeServer({
           bridge_asset_url: item.saved.bridgeAssetUrl,
           project_id: task.project_id,
           node_id: task.node_id,
+          operation: task.generation.operation,
+          parent_asset_id: task.parent_asset_id,
+          source_assets: task.source_assets,
+          mask_asset: task.mask_asset,
         })),
         persistence_status: itemErrors.length ? "partial" : "completed",
         warning: itemErrors.length ? `${itemErrors.length} 张图片生成失败` : "",
@@ -546,9 +807,21 @@ export function createBridgeServer({
       }
 
       if (request.method === "GET" && url.pathname === "/api/beemax/capabilities") {
+        const maxReferenceImages = Math.max(
+          0,
+          ...providers.map((provider) => Number(provider.capabilities?.references || 0)),
+        );
         sendJson(response, 200, {
           success: true,
           image: {
+            operations: IMAGE_OPERATIONS,
+            inputs: {
+              local_file: true,
+              canvas_asset: true,
+              url: true,
+              data_url: true,
+            },
+            max_reference_images: maxReferenceImages,
             generate: {
               async: true,
               cancel: true,
@@ -573,9 +846,21 @@ export function createBridgeServer({
       }
 
       if (request.method === "POST" && url.pathname === "/api/image") {
-        const payload = await readJson(request);
+        const payload = canonicalImagePayload(await readJson(request));
         if (!String(payload.prompt || "").trim()) {
           sendJson(response, 422, { success: false, error: "prompt 不能为空" });
+          return;
+        }
+        if (!providers.some((provider) => providerSupportsPayload(provider, payload))) {
+          sendJson(response, 422, {
+            success: false,
+            error: `没有 Provider 支持 ${payload.operation}（参考图 ${payload.input_images.length} 张）`,
+            required_capability: {
+              operation: payload.operation,
+              references: payload.input_images.length,
+              mask: Boolean(payload.mask_image),
+            },
+          });
           return;
         }
         const task = createTask(payload);
@@ -696,15 +981,18 @@ export function createBridgeServer({
           sendJson(response, 409, { success: false, error: "运行中的任务不能重试" });
           return;
         }
-        const payload = {
+        const payload = canonicalImagePayload({
           ...original.generation,
+          input_images: original.source_assets || [],
+          mask_image: original.mask_asset || null,
+          parent_asset_id: original.parent_asset_id,
           async_mode: true,
           node_id: original.node_id,
           project_id: original.project_id,
           run_id: original.run_id,
           parent_id: original.parent_id,
           batch_id: original.batch_id,
-        };
+        });
         const retried = createTask(payload);
         retried.retry_of = originalTaskId;
         tasks.set(retried.task_id, retried);
