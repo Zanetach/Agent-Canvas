@@ -51,6 +51,8 @@ Bridge 复用本机 Codex CLI 的 ChatGPT OAuth，不需要在浏览器填写 Op
 
 Bridge 只读 `~/.codex/auth.json` 当前 access token，不读取或刷新 Codex CLI 的 refresh token，也不依赖 Hermes 安装。
 
+Bridge 会向旧版 Canvas 设置接口注入只读的 `BeeMax Codex Agent` 图片 Provider，因此图片节点不会再显示“未配置 API”。保存设置时该受管 Provider 会被自动剔除，不会污染原中转站配置。
+
 原画布的 `gpt-image-2` 会根据质量映射为：
 
 - `low` → `gpt-image-2-low`

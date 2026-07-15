@@ -8,6 +8,41 @@ import { spawn } from "node:child_process";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
+const MANAGED_CODEX_PROVIDER = Object.freeze({
+  id: "beemax-codex-agent",
+  name: "BeeMax Codex Agent",
+  protocol: "beemax",
+  enabled: true,
+  baseUrl: "",
+  apiKey: "",
+  textModels: [],
+  imageModels: ["gpt-image-2"],
+  videoModels: [],
+  defaultTextModel: "",
+  defaultImageModel: "gpt-image-2",
+  defaultVideoModel: "",
+});
+
+function withManagedCodexProvider(settings) {
+  const current = Array.isArray(settings?.providers) ? settings.providers : [];
+  return {
+    ...(settings || {}),
+    providers: [
+      MANAGED_CODEX_PROVIDER,
+      ...current.filter((provider) => provider?.id !== MANAGED_CODEX_PROVIDER.id),
+    ],
+  };
+}
+
+function withoutManagedCodexProvider(settings) {
+  if (!settings || typeof settings !== "object") return settings;
+  return {
+    ...settings,
+    providers: Array.isArray(settings.providers)
+      ? settings.providers.filter((provider) => provider?.id !== MANAGED_CODEX_PROVIDER.id)
+      : settings.providers,
+  };
+}
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -244,6 +279,40 @@ export function createBridgeServer({
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
+  }
+
+  async function proxyRuntimeSettings(request, response) {
+    if (!upstream) {
+      sendJson(response, 404, { success: false, error: "原 Canvas 后端未配置" });
+      return;
+    }
+    const method = request.method || "GET";
+    let body;
+    if (!["GET", "HEAD"].includes(method)) {
+      body = JSON.stringify(withoutManagedCodexProvider(await readJson(request)));
+    }
+    const upstreamResponse = await fetch(`${upstream}${request.url}`, {
+      method,
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body,
+    });
+    const text = await upstreamResponse.text();
+    let payload;
+    try {
+      payload = JSON.parse(text || "{}");
+    } catch {
+      sendJson(response, upstreamResponse.status, {
+        success: false,
+        error: "原 Canvas 运行配置返回了非 JSON 响应",
+      });
+      return;
+    }
+    if (payload?.settings && typeof payload.settings === "object") {
+      payload.settings = withManagedCodexProvider(payload.settings);
+    } else {
+      payload = withManagedCodexProvider(payload);
+    }
+    sendJson(response, upstreamResponse.status, payload);
   }
 
   async function persistTask(task) {
@@ -492,6 +561,14 @@ export function createBridgeServer({
             },
           },
         });
+        return;
+      }
+
+      if (
+        ["GET", "PUT"].includes(request.method || "GET") &&
+        url.pathname === "/api/admin/runtime-settings"
+      ) {
+        await proxyRuntimeSettings(request, response);
         return;
       }
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="${0:A:h}"
-PORT="${INUX_TEST_PORT:-17852}"
+PORT="${INUX_TEST_PORT:-17952}"
 BASE_URL="http://127.0.0.1:$PORT"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/inux-canvas-web.XXXXXX")"
 LAUNCHER_PID=""
@@ -60,6 +60,9 @@ fi
 grep -q '"status":"ok"' "$TEST_DIR/health.json"
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/beemax/health" >"$TEST_DIR/bridge-health.json"
 grep -q '"service":"beemax-bridge"' "$TEST_DIR/bridge-health.json"
+curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/admin/runtime-settings" >"$TEST_DIR/runtime-settings.json"
+grep -q '"id":"beemax-codex-agent"' "$TEST_DIR/runtime-settings.json"
+grep -q '"name":"BeeMax Codex Agent"' "$TEST_DIR/runtime-settings.json"
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/" >"$TEST_DIR/index.html"
 grep -q '<div id="root"></div>' "$TEST_DIR/index.html"
 grep -q '<title>BeeMax Canvas</title>' "$TEST_DIR/index.html"

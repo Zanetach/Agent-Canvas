@@ -620,6 +620,68 @@ test("non-Bridge routes are transparently proxied to the original Canvas backend
   }
 });
 
+test("legacy runtime settings expose the managed BeeMax Codex image provider", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  let savedSettings;
+  const upstream = createServer(async (request, response) => {
+    if (request.method === "PUT") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      savedSettings = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ success: true, settings: savedSettings }));
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ activeProviderId: "", providers: [] }));
+  });
+  const upstreamOrigin = await listen(upstream);
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl: upstreamOrigin,
+    providers: [{ id: "codex-native", async generate() {} }],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    assert.deepEqual(
+      settings.providers.find((provider) => provider.id === "beemax-codex-agent"),
+      {
+        id: "beemax-codex-agent",
+        name: "BeeMax Codex Agent",
+        protocol: "beemax",
+        enabled: true,
+        baseUrl: "",
+        apiKey: "",
+        textModels: [],
+        imageModels: ["gpt-image-2"],
+        videoModels: [],
+        defaultTextModel: "",
+        defaultImageModel: "gpt-image-2",
+        defaultVideoModel: "",
+      },
+    );
+
+    const updated = await fetch(`${baseUrl}/api/admin/runtime-settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        activeProviderId: "relay",
+        providers: [settings.providers[0], { id: "relay", name: "Relay" }],
+      }),
+    }).then((response) => response.json());
+    assert.deepEqual(savedSettings.providers, [{ id: "relay", name: "Relay" }]);
+    assert.equal(updated.settings.providers[0].id, "beemax-codex-agent");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("completed Bridge tasks remain queryable after the service restarts", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
   const firstServer = createBridgeServer({
