@@ -90,6 +90,8 @@ GET  /api/beemax/capabilities
 
 `POST /api/image` 的 `operation` 支持 `generate`、`edit`、`mask`、`outpaint` 和 `variation`。高级操作使用 `input_images`（最多 10 张）；Mask 额外使用 `mask_image`。图片引用可以是 Canvas 资产路径、HTTP(S) URL 或图片 Data URL，本地文件由 Agent Adapter 先上传为 Canvas 资产。Mask 与源图必须先成为受控资产或 Data URL，且使用同尺寸 PNG，Mask 必须带 alpha 通道。单个及合计受控输入均限制为 50 MB。每个任务会记录源资产、Mask、操作类型、父资产和 Provider 路由。Web 生图面板可直接选择参考图生成、编辑、扩图或变体，局部编辑器会生成带 alpha 通道的 PNG Mask。
 
+`edit`、`mask` 和 `variation` 默认保持源图比例与构图，不再按面板比例二次裁切；需要改变画幅时使用 `outpaint`。`generate` 仍按用户选择的目标比例生成。
+
 为兼容原画布，`status` 保留 `pending`、`running`、`completed`、`failed` 和 `cancelled`；跨引擎字段 `canonical_status` 统一为 `pending`、`running`、`success`、`error` 和 `cancelled`。任务、路由事件和图片元数据会持久化；服务重启后仍可查询。重启时尚未结束的任务会标记为中断失败，可通过 retry 创建新任务。
 
 ## Hermes Agent 插件

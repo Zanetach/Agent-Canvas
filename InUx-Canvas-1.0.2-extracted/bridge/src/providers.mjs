@@ -73,7 +73,7 @@ function operationPrompt(payload) {
     return `Outpaint the first input image to fill the requested output dimensions. Preserve the original image content and extend the surrounding scene naturally beyond its existing boundaries. ${prompt}`.trim();
   }
   if (payload.operation === "edit") {
-    return `Edit the supplied image while preserving all details not requested to change. ${prompt}`.trim();
+    return `Use the first input image as the base canvas. Preserve its exact composition, aspect ratio, dimensions, style, colors, textures, and all details not explicitly requested to change. Add or modify only what the user asks for; do not recreate or reinterpret the scene. ${prompt}`.trim();
   }
   return prompt;
 }
@@ -233,7 +233,9 @@ export function createDirectCodexProvider({
         const imageTool = {
           type: "image_generation",
           model: "gpt-image-2",
-          size: codexImageSize(payload.size || payload.aspect_ratio, payload.resolution),
+          size: ["edit", "mask", "variation"].includes(payload.operation)
+            ? "auto"
+            : codexImageSize(payload.size || payload.aspect_ratio, payload.resolution),
           quality,
           output_format: "png",
           background: "opaque",

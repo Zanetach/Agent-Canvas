@@ -650,6 +650,22 @@ test("direct Codex provider sends reference images and mask to the Responses too
     );
     assert.equal(received.input[0].content[1].image_url, source);
     assert.equal(received.tools[0].input_image_mask.image_url, source);
+    assert.equal(received.tools[0].size, "auto");
+
+    await provider.generate(
+      {
+        operation: "edit",
+        prompt: "add a small cat inside the existing scene",
+        input_images: [{ url: source }],
+        size: "3:4",
+      },
+      { signal: new AbortController().signal },
+    );
+    assert.equal(received.tools[0].size, "auto");
+    assert.match(
+      received.input[0].content[0].text,
+      /Use the first input image as the base canvas.*exact composition.*dimensions/s,
+    );
 
     await provider.generate(
       {
@@ -673,6 +689,7 @@ test("direct Codex provider sends reference images and mask to the Responses too
       },
       { signal: new AbortController().signal },
     );
+    assert.equal(received.tools[0].size, "auto");
     assert.match(received.input[0].content[0].text, /^Create a distinct but close variation/);
   } finally {
     await new Promise((resolve) => codexApi.close(resolve));

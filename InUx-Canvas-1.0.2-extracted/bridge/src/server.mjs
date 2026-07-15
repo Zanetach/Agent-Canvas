@@ -654,9 +654,12 @@ export function createBridgeServer({
     await mkdir(assetsDir, { recursive: true });
     const assetFile = path.join(assetsDir, filename);
     await writeFile(assetFile, bytes);
+    const preservesSourceComposition = ["edit", "mask", "variation"].includes(
+      payload.operation,
+    );
     const dimensions = await normalizeImageAspect(
       assetFile,
-      payload.size || payload.aspect_ratio,
+      preservesSourceComposition ? "" : payload.size || payload.aspect_ratio,
     );
     const thumbnailDimensions = await createThumbnail(
       assetFile,
