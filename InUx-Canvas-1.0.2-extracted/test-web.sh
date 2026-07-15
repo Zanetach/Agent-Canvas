@@ -17,11 +17,24 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+source "$ROOT_DIR/bridge/node-runtime.zsh"
+NODE_BIN="$(beemax_resolve_node || true)"
+if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+  print -u2 "缺少 Node.js，无法运行 BeeMax Bridge 测试"
+  exit 1
+fi
+
+"$NODE_BIN" --test "$ROOT_DIR/bridge/test/bridge-api.test.mjs"
+
+CODEX_COMMAND_JSON="[\"$NODE_BIN\",\"$ROOT_DIR/bridge/fixtures/fake-codex-provider.mjs\"]"
+
 env \
   INUX_BACKEND_PORT="$PORT" \
   INUX_DATA_DIR="$TEST_DIR/data" \
   INUX_LOG_DIR="$TEST_DIR/logs" \
   INUX_BACKEND_LOG_LEVEL=info \
+  BEEMAX_NODE="$NODE_BIN" \
+  BEEMAX_CODEX_PROVIDER_COMMAND_JSON="$CODEX_COMMAND_JSON" \
   "$ROOT_DIR/start-web.sh" --no-open >"$TEST_DIR/launcher.log" 2>&1 &
 LAUNCHER_PID=$!
 
@@ -45,8 +58,11 @@ if (( ! ready )); then
 fi
 
 grep -q '"status":"ok"' "$TEST_DIR/health.json"
+curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/beemax/health" >"$TEST_DIR/bridge-health.json"
+grep -q '"service":"beemax-bridge"' "$TEST_DIR/bridge-health.json"
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/" >"$TEST_DIR/index.html"
 grep -q '<div id="root"></div>' "$TEST_DIR/index.html"
+grep -q '<title>BeeMax Canvas</title>' "$TEST_DIR/index.html"
 
 asset_path="$(sed -n 's/.*src="\([^"]*\.js\)".*/\1/p' "$TEST_DIR/index.html")"
 [[ -n "$asset_path" ]]
@@ -78,4 +94,29 @@ if grep -q '页面运行时出错' "$TEST_DIR/rendered.html"; then
   exit 1
 fi
 
-print "PASS health, assets and rendered browser UI: $BASE_URL"
+curl --noproxy '*' -fsS --max-time 3 \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"BeeMax Bridge smoke test","model":"gpt-image-2-medium","size":"16:9","async_mode":true,"project_id":"smoke-project","node_id":"smoke-node"}' \
+  "$BASE_URL/api/image" >"$TEST_DIR/submitted.json"
+task_id="$(sed -n 's/.*"task_id":"\([^"]*\)".*/\1/p' "$TEST_DIR/submitted.json")"
+[[ "$task_id" == beemax_image_* ]]
+
+task_ready=0
+for _ in {1..100}; do
+  curl --noproxy '*' -fsS --max-time 2 "$BASE_URL/api/task/$task_id" >"$TEST_DIR/task.json"
+  if grep -q '"status":"completed"' "$TEST_DIR/task.json"; then
+    task_ready=1
+    break
+  fi
+  sleep 0.05
+done
+(( task_ready ))
+grep -q '"provider_id":"codex-native"' "$TEST_DIR/task.json"
+asset_path="$(sed -n 's/.*"server_urls":\["[^/]*\/\/[^/]*\([^"?]*\)"\].*/\1/p' "$TEST_DIR/task.json")"
+[[ "$asset_path" == /uploads/* ]]
+curl --noproxy '*' -fsS --max-time 3 "$BASE_URL$asset_path" >"$TEST_DIR/generated.png"
+file "$TEST_DIR/generated.png" | grep -q 'PNG image data'
+curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/assets" >"$TEST_DIR/assets.json"
+grep -q "$task_id" "$TEST_DIR/assets.json"
+
+print "PASS Bridge tests, image task, Canvas asset registration and rendered browser UI: $BASE_URL"
