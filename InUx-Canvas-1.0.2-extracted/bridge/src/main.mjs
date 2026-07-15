@@ -52,16 +52,19 @@ const publicOrigin = process.env.BEEMAX_PUBLIC_ORIGIN || `http://${host}:${port}
 
 const codexCommand = parseCommand();
 const codexTimeoutMs = integerEnv("BEEMAX_CODEX_TIMEOUT_MS", 300_000);
-const providers = [
-  codexCommand
-    ? createCommandCodexProvider({ command: codexCommand, timeoutMs: codexTimeoutMs })
-    : createDirectCodexProvider({ timeoutMs: codexTimeoutMs }),
-];
+const codexProvider = codexCommand
+  ? createCommandCodexProvider({ command: codexCommand, timeoutMs: codexTimeoutMs })
+  : createDirectCodexProvider({ timeoutMs: codexTimeoutMs });
+const providers = [codexProvider];
 
 try {
   providers.push(
     await createHermesTextProvider({
       timeoutMs: integerEnv("BEEMAX_HERMES_TIMEOUT_MS", 300_000),
+      visionAnalyzer:
+        typeof codexProvider.analyzeImages === "function"
+          ? codexProvider.analyzeImages.bind(codexProvider)
+          : undefined,
     }),
   );
 } catch (error) {

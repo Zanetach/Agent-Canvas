@@ -965,15 +965,39 @@ export function createBridgeServer({
           sendJson(response, 422, { success: false, error: "user_prompt 不能为空" });
           return;
         }
+        const rawImageUrls = Array.isArray(payload.image_urls)
+          ? payload.image_urls.map(String).filter(Boolean)
+          : [];
+        if (rawImageUrls.length > MAX_REFERENCE_IMAGES) {
+          const error = new Error(`文本参考图最多 ${MAX_REFERENCE_IMAGES} 张`);
+          error.statusCode = 422;
+          throw error;
+        }
+        const imageBudget = { used: 0 };
+        const imageUrls = [];
+        for (let index = 0; index < rawImageUrls.length; index += 1) {
+          const reference = normalizeImageReference(rawImageUrls[index], index);
+          const materialized = await materializeImageReference(
+            reference,
+            undefined,
+            imageBudget,
+          );
+          if (!materialized.url.startsWith("data:image/")) {
+            const error = new Error(
+              "Hermes 文本参考图必须先上传为 Canvas 资产或使用图片 Data URL",
+            );
+            error.statusCode = 422;
+            throw error;
+          }
+          imageUrls.push(materialized.url);
+        }
         const generated = await provider.generateText({
           model: requestedModel,
           systemPrompt: String(payload.system_prompt || ""),
           userPrompt,
           temperature: Number(payload.temperature ?? 0.7),
           maxTokens: Math.max(1, Math.min(128_000, Number(payload.max_tokens) || 4096)),
-          imageUrls: Array.isArray(payload.image_urls)
-            ? payload.image_urls.map(String).filter(Boolean)
-            : [],
+          imageUrls,
         });
         sendJson(response, 200, {
           success: true,

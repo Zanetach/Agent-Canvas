@@ -55,6 +55,8 @@ Bridge 会向旧版 Canvas 设置接口注入只读的 `BeeMax Hermes + Codex Ag
 
 Hermes 未安装或尚未配置默认模型时，Bridge 仍可启动，但只显示 Codex 图片模型。修改 Hermes 默认模型后重启 BeeMax，即会重新发现并更新文本模型列表。
 
+文本节点带参考图时，Bridge 会先把受控 Canvas 资产交给 Codex 做视觉理解，再将视觉摘要、用户提示词和系统指令一起交给 Hermes 当前文本模型生成最终结果。纯文本请求仍直接调用 Hermes。这样无需复制 Hermes/Codex 密钥，也不依赖 Hermes 额外配置视觉 Provider。自定义命令式 Codex Provider 需实现 `operation: "analyze"` 并返回 `text`；若视觉分析失败，单图请求可回退 Hermes 原生附件，多图请求会明确报错而不会静默丢图。
+
 原画布的 `gpt-image-2` 会根据质量映射为：
 
 - `low` → `gpt-image-2-low`

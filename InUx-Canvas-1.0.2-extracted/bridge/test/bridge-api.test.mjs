@@ -868,6 +868,10 @@ test("Codex command provider uses agent auth without receiving an API key", asyn
       for await (const chunk of process.stdin) chunks.push(chunk);
       const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if (Object.hasOwn(input, "api_key")) process.exit(23);
+      if (input.operation === "analyze") {
+        process.stdout.write(JSON.stringify({ success: true, text: "一张测试参考图" }));
+        process.exit(0);
+      }
       const image = input.output_path;
       await writeFile(image, Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xy4uAAAAAElFTkSuQmCC",
@@ -886,6 +890,13 @@ test("Codex command provider uses agent auth without receiving an API key", asyn
   assert.equal(provider.capabilities.generate, true);
   assert.equal(provider.capabilities.edit, false);
   assert.equal(provider.capabilities.references, 0);
+  assert.equal(
+    await provider.analyzeImages({
+      imageUrls: [`data:image/png;base64,${PNG_BYTES.toString("base64")}`],
+      prompt: "描述图片",
+    }),
+    "一张测试参考图",
+  );
   const server = createBridgeServer({
     dataDir,
     publicOrigin: "http://127.0.0.1:9999",
@@ -998,6 +1009,52 @@ test("direct Codex provider only needs Codex CLI auth and the Responses endpoint
     assert.deepEqual(Buffer.from(await asset.arrayBuffer()), PNG_BYTES);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => codexApi.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("direct Codex provider analyzes reference images through the Responses endpoint", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-codex-vision-test-"));
+  const authFile = path.join(dataDir, "auth.json");
+  const claims = Buffer.from(
+    JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "vision-account" } }),
+  ).toString("base64url");
+  await writeFile(
+    authFile,
+    JSON.stringify({ tokens: { access_token: `header.${claims}.signature` } }),
+  );
+  let receivedPayload;
+  const codexApi = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    receivedPayload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `event: response.output_text.delta\n` +
+        `data: ${JSON.stringify({
+          type: "response.output_text.delta",
+          delta: "图片中是一只虎斑猫。",
+        })}\n\n`,
+    );
+  });
+  const baseUrl = await listen(codexApi);
+
+  try {
+    const provider = createDirectCodexProvider({ authFile, baseUrl, timeoutMs: 1_000 });
+    const imageUrl = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+    const text = await provider.analyzeImages({
+      imageUrls: [imageUrl],
+      prompt: "描述参考图",
+    });
+    assert.equal(text, "图片中是一只虎斑猫。");
+    assert.equal(receivedPayload.model, "gpt-5.4");
+    assert.equal(receivedPayload.stream, true);
+    assert.deepEqual(receivedPayload.input[0].content, [
+      { type: "input_text", text: "描述参考图" },
+      { type: "input_image", image_url: imageUrl },
+    ]);
+  } finally {
     await new Promise((resolve) => codexApi.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -1287,6 +1344,14 @@ test("managed BeeMax Codex provider exposes and serves text generation", async (
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
   let receivedTextPayload;
   const upstream = createServer((request, response) => {
+    if (request.url === "/uploads/reference.png") {
+      response.writeHead(200, {
+        "content-type": "image/png",
+        "content-length": PNG_BYTES.length,
+      });
+      response.end(PNG_BYTES);
+      return;
+    }
     if (request.url === "/api/admin/runtime-settings") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ providers: [] }));
@@ -1335,6 +1400,7 @@ test("managed BeeMax Codex provider exposes and serves text generation", async (
         user_prompt: "写一句科技品牌标语。",
         temperature: 0.7,
         max_tokens: 256,
+        image_urls: ["/uploads/reference.png"],
         api_key: "must-not-cross-provider-boundary",
       }),
     });
@@ -1348,7 +1414,7 @@ test("managed BeeMax Codex provider exposes and serves text generation", async (
       userPrompt: "写一句科技品牌标语。",
       temperature: 0.7,
       maxTokens: 256,
-      imageUrls: [],
+      imageUrls: [`data:image/png;base64,${PNG_BYTES.toString("base64")}`],
     });
 
     const unsupported = await fetch(`${baseUrl}/api/llm`, {
@@ -1411,6 +1477,96 @@ test("Hermes text provider discovers the configured model without exposing crede
       model: "glm-test-2026",
       provider: "custom:test-provider",
     });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes text provider falls back to a native CLI attachment when Codex vision fails", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-vision-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  await writeFile(
+    configFile,
+    "model:\n  default: vision-test-model\n  provider: custom:vision-test\n",
+    "utf8",
+  );
+  const command = [
+    process.execPath,
+    "-e",
+    [
+      "const fs = require('node:fs');",
+      "const args = process.argv.slice(1);",
+      "const imageIndex = args.indexOf('--image');",
+      "const imagePath = imageIndex >= 0 ? args[imageIndex + 1] : '';",
+      "process.stdout.write(JSON.stringify({",
+      "  chat: args[0] === 'chat',",
+      "  quiet: args.includes('-Q'),",
+      "  hasImage: Boolean(imagePath) && fs.existsSync(imagePath),",
+      "  imageBytes: imagePath && fs.existsSync(imagePath) ? fs.readFileSync(imagePath).length : 0",
+      "}));",
+    ].join(""),
+    "--",
+  ];
+
+  try {
+    const provider = await createHermesTextProvider({
+      configFile,
+      command,
+      async visionAnalyzer() {
+        throw new Error("Codex vision unavailable");
+      },
+    });
+    const result = await provider.generateText({
+      model: "vision-test-model",
+      userPrompt: "描述这张参考图片",
+      imageUrls: [`data:image/png;base64,${PNG_BYTES.toString("base64")}`],
+    });
+    assert.deepEqual(JSON.parse(result.text), {
+      chat: true,
+      quiet: true,
+      hasImage: true,
+      imageBytes: PNG_BYTES.length,
+    });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes text provider uses a Codex vision summary before text generation", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-hybrid-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  await writeFile(
+    configFile,
+    "model:\n  default: hybrid-text-model\n  provider: custom:hybrid\n",
+    "utf8",
+  );
+  let analyzedImages;
+  const command = [
+    process.execPath,
+    "-e",
+    "process.stdout.write(process.argv.slice(1).join(' '))",
+    "--",
+  ];
+
+  try {
+    const provider = await createHermesTextProvider({
+      configFile,
+      command,
+      async visionAnalyzer({ imageUrls }) {
+        analyzedImages = imageUrls;
+        return "图片中是一只坐着的虎斑猫。";
+      },
+    });
+    const imageUrl = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+    const result = await provider.generateText({
+      model: "hybrid-text-model",
+      userPrompt: "为这张图写一句标题",
+      imageUrls: [imageUrl],
+    });
+    assert.deepEqual(analyzedImages, [imageUrl]);
+    assert.match(result.text, /参考图片视觉摘要/);
+    assert.match(result.text, /图片中是一只坐着的虎斑猫/);
+    assert.doesNotMatch(result.text, /--image/);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

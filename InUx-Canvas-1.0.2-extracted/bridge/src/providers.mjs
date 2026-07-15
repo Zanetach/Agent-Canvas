@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -137,6 +137,35 @@ function hermesModelSelection(config) {
   };
 }
 
+async function createHermesImageAttachment(imageUrls) {
+  const dataUrls = (Array.isArray(imageUrls) ? imageUrls : []).filter((value) =>
+    String(value || "").startsWith("data:image/"),
+  );
+  if (dataUrls.length > 1) {
+    throw new Error("当前 Hermes 原生附件 fallback 只支持 1 张参考图，请启用 Codex 视觉分析");
+  }
+  const dataUrl = dataUrls[0];
+  if (!dataUrl) return null;
+  const match = String(dataUrl).match(
+    /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/,
+  );
+  if (!match) throw new Error("Hermes 参考图片必须是 PNG、JPEG 或 WebP Data URL");
+  const bytes = Buffer.from(match[2], "base64");
+  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error("Hermes 参考图片为空或超过 50 MB 安全限制");
+  }
+  const extension = match[1] === "image/jpeg" ? "jpg" : match[1].split("/")[1];
+  const directory = await mkdtemp(path.join(tmpdir(), "beemax-hermes-image-"));
+  const imagePath = path.join(directory, `reference.${extension}`);
+  try {
+    await writeFile(imagePath, bytes, { mode: 0o600 });
+    return { directory, imagePath };
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function runHermesText(command, args, { signal, timeoutMs }) {
   return new Promise((resolve, reject) => {
     const [executable, ...baseArgs] = command;
@@ -220,6 +249,7 @@ export async function createHermesTextProvider({
   configFile = DEFAULT_HERMES_CONFIG_FILE,
   command = DEFAULT_HERMES_COMMAND,
   timeoutMs = 300_000,
+  visionAnalyzer,
 } = {}) {
   if (!Array.isArray(command) || command.length === 0) {
     throw new Error("Hermes command must be a non-empty array");
@@ -240,17 +270,57 @@ export async function createHermesTextProvider({
     defaultTextModel: selection.model,
     async generateText(payload, { signal } = {}) {
       const model = String(payload.model || selection.model);
+      const imageUrls = Array.isArray(payload.imageUrls) ? payload.imageUrls : [];
+      let visionSummary = "";
+      if (imageUrls.length > 0 && typeof visionAnalyzer === "function") {
+        try {
+          visionSummary = await visionAnalyzer(
+            {
+              imageUrls,
+              prompt: "请完整描述这些参考图片的主体、构图、颜色、文字及彼此关系。",
+            },
+            { signal },
+          );
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          // A Hermes installation with native or auxiliary vision can still handle the image.
+        }
+      }
       const combinedPrompt = [
         payload.systemPrompt ? `系统指令：\n${payload.systemPrompt}` : "",
+        visionSummary ? `参考图片视觉摘要：\n${visionSummary}` : "",
         `用户请求：\n${String(payload.userPrompt || "")}`,
         "直接输出最终文本，不要描述执行过程。",
       ]
         .filter(Boolean)
         .join("\n\n");
-      const args = ["-z", combinedPrompt, "-m", model, "--ignore-rules"];
-      if (selection.provider) args.push("--provider", selection.provider);
-      const text = await runHermesText(command, args, { signal, timeoutMs });
-      return { text, model, provider: selection.provider };
+      const attachment = visionSummary ? null : await createHermesImageAttachment(imageUrls);
+      try {
+        const args = attachment
+          ? [
+              "chat",
+              "-q",
+              combinedPrompt,
+              "--image",
+              attachment.imagePath,
+              "-Q",
+              "-m",
+              model,
+              "--ignore-rules",
+              "--source",
+              "beemax-canvas",
+              "--max-turns",
+              "2",
+            ]
+          : ["-z", combinedPrompt, "-m", model, "--ignore-rules"];
+        if (selection.provider) args.push("--provider", selection.provider);
+        const text = await runHermesText(command, args, { signal, timeoutMs });
+        return { text, model, provider: selection.provider };
+      } finally {
+        if (attachment) {
+          await rm(attachment.directory, { recursive: true, force: true });
+        }
+      }
     },
   };
 }
@@ -272,6 +342,36 @@ function findImageBase64(value) {
     }
   }
   return found;
+}
+
+function responseOutputText(value) {
+  if (!value || typeof value !== "object") return "";
+  if (value.type === "output_text" && typeof value.text === "string") return value.text;
+  if (typeof value.output_text === "string") return value.output_text;
+  for (const child of Object.values(value)) {
+    if (child && typeof child === "object") {
+      const found = Array.isArray(child)
+        ? child.map(responseOutputText).find(Boolean)
+        : responseOutputText(child);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+
+function codexHeaders(accessToken, claims) {
+  const headers = {
+    accept: "application/json",
+    authorization: `Bearer ${accessToken}`,
+    "content-type": "application/json",
+    originator: "codex_cli_rs",
+    "user-agent": "codex_cli_rs/0.0.0 (BeeMax Canvas)",
+  };
+  const accountId = claims?.["https://api.openai.com/auth"]?.chatgpt_account_id;
+  if (typeof accountId === "string" && accountId) {
+    headers["chatgpt-account-id"] = accountId;
+  }
+  return headers;
 }
 
 async function collectCodexImage(response) {
@@ -317,6 +417,49 @@ async function collectCodexImage(response) {
   return bytes;
 }
 
+async function collectCodexText(response) {
+  if (!response.body) throw new Error("Codex 视觉分析返回空响应");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let output = "";
+  let totalBytes = 0;
+
+  const consumeEvent = (rawEvent) => {
+    const data = rawEvent
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") return;
+    const event = JSON.parse(data);
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      output += event.delta;
+      return;
+    }
+    if (!output) output = responseOutputText(event);
+  };
+
+  for await (const chunk of response.body) {
+    totalBytes += chunk.length;
+    if (totalBytes > 2 * 1024 * 1024) {
+      throw new Error("Codex 视觉摘要超过 2 MB 安全限制");
+    }
+    buffer += decoder.decode(chunk, { stream: true });
+    let boundary;
+    while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
+      const event = buffer.slice(0, boundary);
+      const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];
+      buffer = buffer.slice(boundary + separator.length);
+      if (event.trim()) consumeEvent(event);
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) consumeEvent(buffer);
+  if (!output.trim()) throw new Error("Codex 视觉分析未返回文本摘要");
+  return output.trim();
+}
+
 export function createDirectCodexProvider({
   authFile = DEFAULT_CODEX_AUTH_FILE,
   baseUrl = DEFAULT_CODEX_RESPONSES_URL,
@@ -335,6 +478,65 @@ export function createDirectCodexProvider({
       cancel: true,
       progress: false,
     },
+    async analyzeImages({ imageUrls, prompt }, { signal } = {}) {
+      const { accessToken, claims } = await readCodexAccessToken(authFile);
+      const attempt = new AbortController();
+      const abortFromTask = () =>
+        attempt.abort(signal?.reason || new Error("Codex 视觉分析已取消"));
+      if (signal?.aborted) abortFromTask();
+      signal?.addEventListener("abort", abortFromTask, { once: true });
+      const timeout = setTimeout(
+        () => attempt.abort(new Error(`Codex 视觉分析超时（${Math.round(timeoutMs / 1000)} 秒）`)),
+        timeoutMs,
+      );
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { ...codexHeaders(accessToken, claims), accept: "text/event-stream" },
+          body: JSON.stringify({
+            model: process.env.BEEMAX_CODEX_VISION_MODEL || "gpt-5.4",
+            instructions:
+              "准确分析参考图片，只描述图片中实际可见的信息，不要执行工具或询问补充信息。",
+            input: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: String(prompt || "请描述参考图片的主体、构图、颜色、文字和关键细节。"),
+                  },
+                  ...(Array.isArray(imageUrls)
+                    ? imageUrls.map((imageUrl) => ({
+                        type: "input_image",
+                        image_url: String(imageUrl),
+                      }))
+                    : []),
+                ],
+              },
+            ],
+            stream: true,
+            store: false,
+          }),
+          signal: attempt.signal,
+        });
+        if (!response.ok) {
+          const raw = await response.text();
+          let body = {};
+          try {
+            body = JSON.parse(raw || "{}");
+          } catch {
+            // Preserve the stable HTTP error below when the endpoint returns plain text.
+          }
+          throw new Error(
+            body?.error?.message || body?.detail || `Codex 视觉分析失败 (HTTP ${response.status})`,
+          );
+        }
+        return await collectCodexText(response);
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abortFromTask);
+      }
+    },
     async generate(payload, { signal }) {
       const { accessToken, claims } = await readCodexAccessToken(authFile);
       const attempt = new AbortController();
@@ -349,17 +551,7 @@ export function createDirectCodexProvider({
       const aspect = aspectRatio(payload.size || payload.aspect_ratio);
       const model = codexImageModel(payload.model, payload.quality);
       const quality = model.slice("gpt-image-2-".length);
-      const headers = {
-        accept: "text/event-stream",
-        authorization: `Bearer ${accessToken}`,
-        "content-type": "application/json",
-        originator: "codex_cli_rs",
-        "user-agent": "codex_cli_rs/0.0.0 (BeeMax Canvas)",
-      };
-      const accountId = claims?.["https://api.openai.com/auth"]?.chatgpt_account_id;
-      if (typeof accountId === "string" && accountId) {
-        headers["chatgpt-account-id"] = accountId;
-      }
+      const headers = { ...codexHeaders(accessToken, claims), accept: "text/event-stream" };
       try {
         const content = [
           { type: "input_text", text: operationPrompt(payload) },
@@ -524,6 +716,36 @@ export function createCommandCodexProvider({
       cancel: true,
       progress: false,
       ...capabilities,
+    },
+    async analyzeImages({ imageUrls, prompt }, { signal } = {}) {
+      const input = {
+        operation: "analyze",
+        prompt: String(prompt || ""),
+        input_images: Array.isArray(imageUrls) ? imageUrls : [],
+      };
+      const attempt = new AbortController();
+      const abortFromTask = () =>
+        attempt.abort(signal?.reason || new Error("Codex 视觉分析已取消"));
+      if (signal?.aborted) abortFromTask();
+      signal?.addEventListener("abort", abortFromTask, { once: true });
+      const timeout = setTimeout(
+        () => attempt.abort(new Error(`Codex 视觉分析超时（${Math.round(timeoutMs / 1000)} 秒）`)),
+        timeoutMs,
+      );
+      try {
+        const output = await runCommand(command, input, {
+          signal: attempt.signal,
+          env,
+        });
+        const result = parseProviderOutput(output);
+        if (!result.success) throw new Error(result.error || "Codex 视觉分析失败");
+        const text = String(result.text || result.response || "").trim();
+        if (!text) throw new Error("Codex Provider 成功响应缺少视觉摘要文本");
+        return text;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abortFromTask);
+      }
     },
     async generate(payload, { signal, task }) {
       const input = {
