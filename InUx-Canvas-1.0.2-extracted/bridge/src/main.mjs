@@ -24,6 +24,16 @@ function parseCommand() {
   return command;
 }
 
+function jsonObjectEnv(name) {
+  const raw = process.env[name];
+  if (!raw) return {};
+  const value = JSON.parse(raw);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${name} 必须是 JSON 对象`);
+  }
+  return value;
+}
+
 async function legacyRelaySettings(dataRoot) {
   try {
     const settings = JSON.parse(
@@ -53,7 +63,11 @@ const publicOrigin = process.env.BEEMAX_PUBLIC_ORIGIN || `http://${host}:${port}
 const codexCommand = parseCommand();
 const codexTimeoutMs = integerEnv("BEEMAX_CODEX_TIMEOUT_MS", 300_000);
 const codexProvider = codexCommand
-  ? createCommandCodexProvider({ command: codexCommand, timeoutMs: codexTimeoutMs })
+  ? createCommandCodexProvider({
+      command: codexCommand,
+      timeoutMs: codexTimeoutMs,
+      capabilities: jsonObjectEnv("BEEMAX_CODEX_PROVIDER_CAPABILITIES_JSON"),
+    })
   : createDirectCodexProvider({ timeoutMs: codexTimeoutMs });
 const providers = [codexProvider];
 

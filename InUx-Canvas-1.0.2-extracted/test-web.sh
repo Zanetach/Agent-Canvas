@@ -40,6 +40,7 @@ env \
   INUX_BACKEND_LOG_LEVEL=info \
   BEEMAX_NODE="$NODE_BIN" \
   BEEMAX_CODEX_PROVIDER_COMMAND_JSON="$CODEX_COMMAND_JSON" \
+  BEEMAX_CODEX_PROVIDER_CAPABILITIES_JSON='{"generate":true,"edit":true,"mask":true,"outpaint":true,"variation":true,"references":10}' \
   "$ROOT_DIR/start-web.sh" --no-open >"$TEST_DIR/launcher.log" 2>&1 &
 LAUNCHER_PID=$!
 
@@ -166,6 +167,6 @@ asset_path="$(sed -n 's/.*"server_urls":\["[^/]*\/\/[^/]*\([^"?]*\)"\].*/\1/p' "
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL$asset_path" >"$TEST_DIR/generated.png"
 file "$TEST_DIR/generated.png" | grep -q 'PNG image data'
 curl --noproxy '*' -fsS --max-time 3 "$BASE_URL/api/assets" >"$TEST_DIR/assets.json"
-grep -q "$task_id" "$TEST_DIR/assets.json"
+grep -q "${asset_path#/uploads/}" "$TEST_DIR/assets.json"
 
 print "PASS Bridge tests, image task, Canvas asset registration and rendered browser UI: $BASE_URL"

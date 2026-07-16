@@ -8800,6 +8800,285 @@ body {
   }
 }
 
+/* Beginner image creation assistant */
+.canvas-flow-shell.with-image-assistant > .react-flow {
+  width: calc(100% - 420px);
+}
+.canvas-flow-shell.with-image-assistant + .canvas-top-actions,
+.canvas-page:has(.canvas-image-assistant) .canvas-top-actions {
+  right: 438px;
+}
+.canvas-page:has(.canvas-image-assistant) .canvas-task-drawer,
+.canvas-page:has(.canvas-image-assistant) .canvas-material-drawer,
+.canvas-page:has(.canvas-image-assistant) .canvas-template-runner-drawer {
+  right: 438px;
+}
+.canvas-image-assistant {
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-default);
+  bottom: 0;
+  box-shadow: -12px 0 32px color-mix(in srgb, var(--fg-primary) 5%, transparent);
+  color: var(--fg-primary);
+  overflow-y: auto;
+  padding: 28px 18px 24px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 420px;
+  z-index: 30;
+}
+.canvas-image-assistant-header {
+  padding: 6px 10px 20px;
+}
+.canvas-image-assistant-progress {
+  color: var(--fg-secondary);
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.canvas-image-assistant-header h2 {
+  font-size: 26px;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin: 0;
+}
+.canvas-image-assistant-header p {
+  color: var(--fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+}
+.canvas-image-assistant-step {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 15px;
+  margin-bottom: 12px;
+  padding: 14px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.canvas-image-assistant-step.active {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border-default));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.canvas-image-assistant-step.complete .canvas-image-assistant-step-heading > span {
+  background: var(--success, #16a34a);
+}
+.canvas-image-assistant-step-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+.canvas-image-assistant-step-heading > span {
+  align-items: center;
+  background: var(--fg-tertiary);
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  height: 25px;
+  justify-content: center;
+  width: 25px;
+}
+.canvas-image-assistant-step.active .canvas-image-assistant-step-heading > span {
+  background: var(--accent);
+}
+.canvas-image-assistant-step-title {
+  font-size: 15px;
+  font-weight: 760;
+}
+.canvas-image-assistant-step > p {
+  color: var(--fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 7px 0 10px 35px;
+}
+.canvas-image-assistant-upload {
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  justify-content: center;
+  min-height: 132px;
+  overflow: hidden;
+  padding: 14px;
+  width: 100%;
+}
+.canvas-image-assistant-upload:hover,
+.canvas-image-assistant-upload:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.canvas-image-assistant-upload strong {
+  color: var(--fg-primary);
+  font-size: 13px;
+}
+.canvas-image-assistant-upload small {
+  color: var(--fg-tertiary);
+  font-size: 11px;
+}
+.canvas-image-assistant-upload.has-image {
+  align-items: center;
+  flex-direction: row;
+  justify-content: flex-start;
+  min-height: 84px;
+}
+.canvas-image-assistant-upload.has-image img {
+  border-radius: 9px;
+  height: 58px;
+  object-fit: cover;
+  width: 58px;
+}
+.canvas-image-assistant-upload.has-image span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.canvas-image-assistant-prompt {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  min-height: 92px;
+  padding: 11px 12px;
+  resize: vertical;
+  width: 100%;
+}
+.canvas-image-assistant-prompt:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+.canvas-image-assistant-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.canvas-image-assistant-examples button {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+.canvas-image-assistant-examples button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.canvas-image-assistant-generate {
+  align-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: 11px;
+  color: var(--fg-inverse);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 760;
+  gap: 8px;
+  justify-content: center;
+  min-height: 46px;
+  width: 100%;
+}
+.canvas-image-assistant-generate:hover {
+  filter: brightness(1.04);
+}
+.canvas-image-assistant-generate:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+.canvas-image-assistant-message {
+  color: var(--fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: -2px 4px 12px;
+}
+.canvas-image-assistant-message.error {
+  color: var(--danger, #ef4444);
+}
+.canvas-image-assistant-message.success {
+  color: var(--success, #16a34a);
+}
+.canvas-image-assistant-settings {
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.canvas-image-assistant-settings > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  list-style: none;
+  min-height: 44px;
+  padding: 0 13px;
+}
+.canvas-image-assistant-settings > summary::-webkit-details-marker {
+  display: none;
+}
+.canvas-image-assistant-settings > div {
+  border-top: 1px solid var(--border-default);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  padding: 12px;
+}
+.canvas-image-assistant-settings select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: 11px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 8px;
+}
+@media (width <= 980px) {
+  .canvas-flow-shell.with-image-assistant > .react-flow {
+    width: 100%;
+  }
+  .canvas-image-assistant {
+    border: 0;
+    border-radius: 18px 18px 0 0;
+    bottom: 0;
+    box-shadow: 0 -12px 34px color-mix(in srgb, var(--fg-primary) 12%, transparent);
+    height: min(72vh, 650px);
+    left: 0;
+    padding: 20px 14px;
+    right: 0;
+    top: auto;
+    width: auto;
+  }
+  .canvas-page:has(.canvas-image-assistant) .canvas-top-actions {
+    right: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-image-assistant-step {
+    transition: none;
+  }
+}
+
 /* Homepage quick creator */
 .quick-create-page-header {
   justify-content: flex-end;

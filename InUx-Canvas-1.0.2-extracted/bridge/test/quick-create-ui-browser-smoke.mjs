@@ -197,6 +197,21 @@ try {
     if (canvasReady) break;
   }
   assert.equal(canvasReady, true, "quick create did not open a Canvas project");
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant'))`),
+    true,
+    "canvas image assistant should be visible",
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await evaluate(`JSON.stringify([...document.querySelectorAll('.canvas-image-assistant-step-title')].map((node) => node.textContent.trim()))`),
+    ),
+    ["上传参考图", "告诉我想怎么改", "开始生成"],
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
+    "图片创作 · 第 1/3 步",
+  );
 
   let generated = false;
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -206,6 +221,52 @@ try {
   }
   assert.equal(generated, true, "quick create did not automatically run image generation");
   assert.match(await evaluate(`document.querySelector('.canvas-title-input')?.value || ''`), /科技蓝机械蜜蜂/);
+
+  const imageCountBeforeAssistant = await evaluate(
+    `document.querySelectorAll('.result-image-node img').length`,
+  );
+  await evaluate(`(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 3;
+    canvas.height = 4;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const file = new File([blob], 'assistant-reference.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const dropZone = document.querySelector('.canvas-image-assistant-upload');
+    dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    dropZone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  })()`);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await wait(100);
+    if (await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-upload.has-image img'))`)) break;
+  }
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-upload.has-image img'))`),
+    true,
+    "assistant reference image upload did not complete",
+  );
+  await evaluate(`(() => {
+    const field = document.querySelector('.canvas-image-assistant-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '保持构图，改成科技蓝机械蜜蜂海报');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
+    "图片创作 · 第 3/3 步",
+  );
+  await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
+  let assistantGenerated = false;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await wait(100);
+    assistantGenerated =
+      (await evaluate(`document.querySelectorAll('.result-image-node img').length`)) >=
+      imageCountBeforeAssistant + 2;
+    if (assistantGenerated) break;
+  }
+  assert.equal(assistantGenerated, true, "assistant did not generate from the uploaded reference image");
 } finally {
   socket.close();
 }
