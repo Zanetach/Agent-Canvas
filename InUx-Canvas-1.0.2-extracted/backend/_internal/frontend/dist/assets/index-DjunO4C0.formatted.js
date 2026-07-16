@@ -28955,6 +28955,7 @@ function PosterTemplatePanel_({
       [e],
     ),
     [o, s] = (0, v.useState)(``),
+    [brief, setBrief] = (0, v.useState)(``),
     [c, l] = (0, v.useState)(posterContentDefaults_),
     [u, d] = (0, v.useState)([]),
     [f, p] = (0, v.useState)(`idle`),
@@ -28968,21 +28969,27 @@ function PosterTemplatePanel_({
         f === `success` && p(`idle`));
     },
     y = async () => {
-      let e = posterContentFields_
-        .filter((e) => !String(c[e.key] || ``).trim())
-        .map((e) => e.key);
-      if (e.length > 0) {
-        (d(e), h(`请填写：${e.join(`、`)}`), p(`error`));
+      let e = brief.trim(),
+        t = posterContentFields_.filter((e) => String(c[e.key] || ``).trim()),
+        n = posterContentFields_
+          .filter((e) => !String(c[e.key] || ``).trim())
+          .map((e) => e.key);
+      if (!e && t.length === 0) {
+        (d([]), h(`请描述你想制作的海报`), p(`error`));
+        return;
+      }
+      if (!e && n.length > 0) {
+        (d(n), h(`请填写：${n.join(`、`)}`), p(`error`));
         return;
       }
       (d([]), h(``), p(`loading`));
       try {
-        let e = await x_(`/api/beemax/prompt-presets/render`, {
+        let t = await x_(`/api/beemax/prompt-presets/render`, {
           method: `POST`,
-          body: JSON.stringify({ style_id: g, content: c }),
+          body: JSON.stringify({ style_id: g, brief: e, content: c }),
         });
-        if (!e?.prompt) throw Error(`模板服务未返回 Prompt`);
-        (i?.(e), p(`success`));
+        if (!t?.prompt) throw Error(`模板服务未返回 Prompt`);
+        (i?.(t), p(`success`));
       } catch (e) {
         (h(e.message || `生成 Prompt 失败`), p(`error`));
       }
@@ -28998,10 +29005,10 @@ function PosterTemplatePanel_({
             children: [
               (0, Q.jsx)(`strong`, {
                 id: `poster-template-title`,
-                children: `商业海报模板`,
+                children: `快速生成商业海报`,
               }),
               (0, Q.jsx)(`span`, {
-                children: `固定风格，只替换内容变量`,
+                children: `选择风格，用一句话描述内容`,
               }),
             ],
           }),
@@ -29033,34 +29040,55 @@ function PosterTemplatePanel_({
           ),
         ),
       }),
-      (0, Q.jsx)(`div`, {
-        className: `poster-template-fields`,
-        children: posterContentFields_.map((e) =>
-          (0, Q.jsxs)(
-            `label`,
-            {
-              className: `${e.multiline ? `wide` : ``} ${u.includes(e.key) ? `invalid` : ``}`,
-              children: [
-                (0, Q.jsx)(`span`, { children: e.label }),
-                e.multiline
-                  ? (0, Q.jsx)(`textarea`, {
-                      value: c[e.key],
-                      onChange: (t) => _(e.key, t.target.value),
-                      placeholder: e.placeholder,
-                      rows: 2,
-                      "aria-invalid": u.includes(e.key),
-                    })
-                  : (0, Q.jsx)(`input`, {
-                      value: c[e.key],
-                      onChange: (t) => _(e.key, t.target.value),
-                      placeholder: e.placeholder,
-                      "aria-invalid": u.includes(e.key),
-                    }),
-              ],
+      (0, Q.jsxs)(`label`, {
+        className: `poster-template-brief-field`,
+        children: [
+          (0, Q.jsx)(`span`, { children: `描述你要做的海报` }),
+          (0, Q.jsx)(`textarea`, {
+            className: `poster-template-brief`,
+            value: brief,
+            onChange: (e) => {
+              (setBrief(e.target.value), h(``), f === `success` && p(`idle`));
             },
-            e.key,
-          ),
-        ),
+            placeholder: `例如：为宏利制作保险年度业绩海报，主标题为 2026 年度增长报告，核心数据 312.9 亿元，同比增长 39%。`,
+            rows: 4,
+          }),
+        ],
+      }),
+      (0, Q.jsxs)(`details`, {
+        className: `poster-template-advanced`,
+        children: [
+          (0, Q.jsx)(`summary`, { children: `更多设置（可选）` }),
+          (0, Q.jsx)(`div`, {
+            className: `poster-template-fields`,
+            children: posterContentFields_.map((e) =>
+              (0, Q.jsxs)(
+                `label`,
+                {
+                  className: `${e.multiline ? `wide` : ``} ${u.includes(e.key) ? `invalid` : ``}`,
+                  children: [
+                    (0, Q.jsx)(`span`, { children: e.label }),
+                    e.multiline
+                      ? (0, Q.jsx)(`textarea`, {
+                          value: c[e.key],
+                          onChange: (t) => _(e.key, t.target.value),
+                          placeholder: e.placeholder,
+                          rows: 2,
+                          "aria-invalid": u.includes(e.key),
+                        })
+                      : (0, Q.jsx)(`input`, {
+                          value: c[e.key],
+                          onChange: (t) => _(e.key, t.target.value),
+                          placeholder: e.placeholder,
+                          "aria-invalid": u.includes(e.key),
+                        }),
+                  ],
+                },
+                e.key,
+              ),
+            ),
+          }),
+        ],
       }),
       (0, Q.jsxs)(`div`, {
         className: `poster-template-footer`,
@@ -29072,13 +29100,13 @@ function PosterTemplatePanel_({
                 type: `button`,
                 onClick: r,
                 disabled: n,
-                children: `上传参考图`,
+                children: `添加 Logo / 参考图（可选）`,
               }),
-              (0, Q.jsxs)(`span`, {
-                children: [
-                  t > 0 ? `已添加 ${t} 张` : `未添加参考图`,
-                  ` · 内容变、风格不变时建议上传上一次成品`,
-                ],
+              (0, Q.jsx)(`span`, {
+                children:
+                  t > 0
+                    ? `已添加 ${t} 张`
+                    : `需要保持风格或品牌元素时再上传`,
               }),
             ],
           }),
@@ -29089,10 +29117,10 @@ function PosterTemplatePanel_({
             disabled: f === `loading`,
             children:
               f === `loading`
-                ? `正在生成 Prompt...`
+                ? `正在生成...`
                 : f === `success`
-                  ? `已填入最终 Prompt`
-                  : `生成并填入 Prompt`,
+                  ? `已生成海报提示词`
+                  : `立即生成`,
           }),
         ],
       }),

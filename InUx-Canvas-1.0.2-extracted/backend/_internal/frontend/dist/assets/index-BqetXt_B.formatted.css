@@ -17433,10 +17433,58 @@ body {
 .poster-template-style.active .poster-template-style-dot {
   background: var(--accent);
 }
+.poster-template-brief-field {
+  display: grid;
+  gap: 6px;
+}
+.poster-template-brief-field > span {
+  color: var(--fg-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+.storyboard-image-generator-body .poster-template-brief {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 92px;
+  padding: 9px 10px;
+  resize: vertical;
+  width: 100%;
+}
+.storyboard-image-generator-body .poster-template-brief:focus {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  outline: none;
+}
+.poster-template-advanced {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.poster-template-advanced summary {
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  list-style-position: inside;
+  padding: 9px 10px;
+  user-select: none;
+}
+.poster-template-advanced[open] summary {
+  border-bottom: 1px solid var(--border-default);
+  color: var(--fg-primary);
+}
 .poster-template-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding: 10px;
 }
 .poster-template-fields label {
   display: grid;

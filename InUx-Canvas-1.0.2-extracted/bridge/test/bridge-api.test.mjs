@@ -363,6 +363,19 @@ test("built-in poster presets appear in the style picker and render structured c
     assert.match(rendered.prompt, /核心数字或日期：312\.9 亿元，同比增长 39%/);
     assert.doesNotMatch(rendered.prompt, /\{\{/);
 
+    const briefResponse = await fetch(`${baseUrl}/api/beemax/prompt-presets/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        style_id: "beemax-poster-emerald-data",
+        brief: "为宏利示例制作保险年度业绩海报，核心数据312.9亿元，同比增长39%。",
+      }),
+    });
+    const briefRendered = await briefResponse.json();
+    assert.equal(briefResponse.status, 200);
+    assert.match(briefRendered.prompt, /用户原始需求：为宏利示例制作保险年度业绩海报/);
+    assert.match(briefRendered.prompt, /未明确提供的信息必须省略/);
+
     const incompleteResponse = await fetch(
       `${baseUrl}/api/beemax/prompt-presets/render`,
       {

@@ -59,11 +59,15 @@ try {
 
   const initial = await evaluate(`JSON.stringify({
     visible: Boolean(document.querySelector('.poster-template-panel')),
+    brief: Boolean(document.querySelector('.poster-template-brief')),
+    advancedOpen: document.querySelector('.poster-template-advanced')?.open || false,
     fields: document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea').length,
     styles: [...document.querySelectorAll('.poster-template-style')].map((element) => element.innerText)
   })`);
   const initialState = JSON.parse(initial);
   assert.equal(initialState.visible, true);
+  assert.equal(initialState.brief, true);
+  assert.equal(initialState.advancedOpen, false);
   assert.equal(initialState.fields, 10);
   assert.deepEqual(initialState.styles, [
     "翡翠绿企业数据风",
@@ -72,51 +76,36 @@ try {
   ]);
 
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.innerText === '生成并填入 Prompt')?.click()`,
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
   );
   await wait(100);
   const validation = await evaluate(
     `document.querySelector('.poster-template-message')?.innerText || ''`,
   );
-  assert.match(validation, /请填写：主题.*合规文字/);
+  assert.match(validation, /请描述你想制作的海报/);
 
-  const values = [
-    "保险年度业绩",
-    "宏利示例",
-    "2026 年度增长报告",
-    "稳健经营，长期增长",
-    "312.9 亿元，同比增长 39%",
-    "规模｜全年新造业务保费",
-    "增长｜核心市场持续增长",
-    "排名｜区域市场第 2 位",
-    "查看完整报告",
-    "数据仅供信息展示，不构成投资建议。",
-  ];
   await evaluate(`(() => {
-    const values = ${JSON.stringify(values)};
-    const fields = [...document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea')];
-    fields.forEach((field, index) => {
-      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
-      descriptor.set.call(field, values[index]);
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    const field = document.querySelector('.poster-template-brief');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '为宏利示例制作一张保险年度业绩海报，主标题为2026年度增长报告，核心数据312.9亿元，同比增长39%，行动号召是查看完整报告。');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await wait(100);
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.innerText === '生成并填入 Prompt')?.click()`,
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
   );
   await wait(500);
 
   const applied = await evaluate(`JSON.stringify({
     prompt: document.querySelector('.image-mention-editor')?.innerText || '',
     settings: [...document.querySelectorAll('.processor-settings-summary')].map((element) => element.innerText),
-    applyLabel: [...document.querySelectorAll('.poster-template-panel button')].find((button) => button.innerText.includes('Prompt'))?.innerText || ''
+    applyLabel: [...document.querySelectorAll('.poster-template-panel button')].find((button) => button.innerText.includes('海报提示词'))?.innerText || ''
   })`);
   const appliedState = JSON.parse(applied);
   assert.match(appliedState.prompt, /【固定风格 STYLE LOCK】/);
-  assert.match(appliedState.prompt, /2026 年度增长报告/);
+  assert.match(appliedState.prompt, /2026年度增长报告/);
   assert.ok(appliedState.settings.some((label) => /3:4.*模板锁定/.test(label)));
-  assert.equal(appliedState.applyLabel, "已填入最终 Prompt");
+  assert.equal(appliedState.applyLabel, "已生成海报提示词");
 } finally {
   socket.close();
 }

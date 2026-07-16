@@ -988,7 +988,11 @@ export function createBridgeServer({
         sendJson(
           response,
           200,
-          renderPosterPrompt(String(payload.style_id || ""), payload.content),
+          renderPosterPrompt(
+            String(payload.style_id || ""),
+            payload.content,
+            payload.brief,
+          ),
         );
         return;
       }

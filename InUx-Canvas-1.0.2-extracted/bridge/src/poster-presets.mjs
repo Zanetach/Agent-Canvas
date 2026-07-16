@@ -1,7 +1,7 @@
 const CATEGORY = "BeeMax 商业海报";
 const POSTER_FORMAT = Object.freeze({ aspectRatio: "3:4", width: 1080, height: 1440 });
 
-const COMMON_INSTRUCTIONS = `根据上传的参考图片，生成一张全新的中文竖版商业信息海报。
+const COMMON_INSTRUCTIONS = `生成一张全新的中文竖版商业信息海报。若提供了参考图片，只继承参考图的视觉语言；未提供参考图时，直接按照固定风格生成。
 
 只继承参考图的视觉语言，包括：配色体系、排版节奏、信息层级、网格结构、卡片造型、图标风格、字体气质、留白比例、材质和光影方向。
 
@@ -103,7 +103,7 @@ export function listPosterStyles(category = "") {
     }));
 }
 
-export function renderPosterPrompt(styleId, content) {
+export function renderPosterPrompt(styleId, content, brief = "") {
   const preset = POSTER_PRESETS.find((candidate) => candidate.id === styleId);
   if (!preset) {
     const error = new Error(`未知商业海报风格：${styleId || "未指定"}`);
@@ -111,19 +111,54 @@ export function renderPosterPrompt(styleId, content) {
     throw error;
   }
   const values = content && typeof content === "object" ? content : {};
-  const missing = CONTENT_FIELDS
-    .map(([key]) => key)
-    .filter((key) => !String(values[key] ?? "").trim());
-  if (missing.length) {
-    const error = new Error(`缺少 CONTENT 字段：${missing.join("、")}`);
+  const briefText = String(brief || "").trim();
+  if (/\{\{|\}\}|待填写|待补充|\bTBD\b|placeholder/i.test(briefText)) {
+    const error = new Error("用户需求仍包含占位符");
     error.statusCode = 422;
     throw error;
   }
   const placeholders = CONTENT_FIELDS
     .map(([key]) => key)
-    .filter((key) => /\{\{|\}\}|待填写|待补充|\bTBD\b|placeholder/i.test(String(values[key])));
+    .filter((key) => /\{\{|\}\}|待填写|待补充|\bTBD\b|placeholder/i.test(String(values[key] ?? "")));
   if (placeholders.length) {
     const error = new Error(`CONTENT 仍包含占位符：${placeholders.join("、")}`);
+    error.statusCode = 422;
+    throw error;
+  }
+  if (briefText) {
+    const structuredLines = CONTENT_FIELDS
+      .filter(([key]) => String(values[key] ?? "").trim())
+      .map(([key, label]) => `${label}：${String(values[key]).trim()}`);
+    const contentBlock = [
+      `用户原始需求：${briefText}`,
+      ...(structuredLines.length
+        ? ["", "用户补充的结构化信息：", ...structuredLines]
+        : []),
+    ].join("\n");
+    return {
+      style_id: preset.id,
+      style_name: preset.name,
+      aspect_ratio: POSTER_FORMAT.aspectRatio,
+      width: POSTER_FORMAT.width,
+      height: POSTER_FORMAT.height,
+      prompt: `${COMMON_INSTRUCTIONS}
+
+【固定风格 STYLE LOCK】
+${preset.styleLock}
+
+【内容变量 CONTENT】
+${contentBlock}
+
+只允许使用用户原始需求和补充信息中明确提供的文字、名称、数字、日期和事实。未明确提供的信息必须省略，不得补造、推断或使用占位符。可以组织版式，但不得改变事实或数字。
+
+${AVOID}`,
+    };
+  }
+  const missing = CONTENT_FIELDS
+    .map(([key]) => key)
+    .filter((key) => !String(values[key] ?? "").trim());
+  if (missing.length) {
+    const error = new Error(`缺少 CONTENT 字段：${missing.join("、")}`);
     error.statusCode = 422;
     throw error;
   }
