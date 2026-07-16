@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 
 import { compositePngWithAlphaMask, decodePng } from "./png-mask.mjs";
+import { listPosterStyles, renderPosterPrompt } from "./poster-presets.mjs";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
@@ -939,7 +940,56 @@ export function createBridgeServer({
               })),
             },
           },
+          prompt_presets: {
+            structured_content: true,
+            list_endpoint: "/api/prompt-styles",
+            render_endpoint: "/api/beemax/prompt-presets/render",
+            category: "BeeMax 商业海报",
+          },
         });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/prompt-styles") {
+        const category = url.searchParams.get("category") || "";
+        let upstreamStyles = [];
+        if (upstream) {
+          try {
+            const upstreamResponse = await fetch(`${upstream}/api/prompt-styles${url.search}`);
+            if (upstreamResponse.ok) {
+              const upstreamBody = await upstreamResponse.json();
+              upstreamStyles = Array.isArray(upstreamBody.styles) ? upstreamBody.styles : [];
+            }
+          } catch {
+            // Built-in poster presets remain available while the legacy backend recovers.
+          }
+        }
+        const builtInStyles = listPosterStyles(category);
+        const builtInIds = new Set(builtInStyles.map((style) => style.id));
+        sendJson(response, 200, {
+          styles: [
+            ...builtInStyles,
+            ...upstreamStyles.filter(
+              (style) =>
+                style?.id &&
+                !builtInIds.has(style.id) &&
+                (!category || style.category === category),
+            ),
+          ],
+        });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/api/beemax/prompt-presets/render"
+      ) {
+        const payload = await readJson(request);
+        sendJson(
+          response,
+          200,
+          renderPosterPrompt(String(payload.style_id || ""), payload.content),
+        );
         return;
       }
 

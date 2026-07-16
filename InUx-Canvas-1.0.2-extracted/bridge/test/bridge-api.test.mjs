@@ -259,8 +259,153 @@ test("capabilities publish the complete image operation contract", async () => {
     assert.equal(capabilities.image.inputs.url, true);
     assert.equal(capabilities.image.inputs.data_url, true);
     assert.equal(capabilities.image.max_reference_images, 10);
+    assert.equal(capabilities.prompt_presets.structured_content, true);
+    assert.equal(capabilities.prompt_presets.list_endpoint, "/api/prompt-styles");
+    assert.equal(
+      capabilities.prompt_presets.render_endpoint,
+      "/api/beemax/prompt-presets/render",
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("built-in poster presets appear in the style picker and render structured content", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-poster-presets-test-"));
+  const upstream = createServer((request, response) => {
+    if (request.url === "/api/prompt-styles") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        styles: [
+          {
+            id: "upstream-existing-style",
+            name: "原有官方风格",
+            category: "其他",
+            prompt: "保留原有风格。",
+          },
+        ],
+      }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const upstreamUrl = await listen(upstream);
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl,
+    providers: [
+      {
+        id: "unused-image-provider",
+        capabilities: { generate: true },
+        async generate() {
+          return { bytes: PNG_BYTES, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const stylesResponse = await fetch(`${baseUrl}/api/prompt-styles`);
+    const stylesBody = await stylesResponse.json();
+    assert.equal(stylesResponse.status, 200);
+    assert.deepEqual(
+      stylesBody.styles.slice(0, 3).map((style) => style.id),
+      [
+        "beemax-poster-emerald-data",
+        "beemax-poster-ivory-legal",
+        "beemax-poster-navy-admissions",
+      ],
+    );
+    assert.equal(stylesBody.styles[3].id, "upstream-existing-style");
+    assert.ok(
+      stylesBody.styles.slice(0, 3).every(
+        (style) => style.category === "BeeMax 商业海报",
+      ),
+    );
+    assert.match(
+      stylesBody.styles.find((style) => style.id === "beemax-poster-ivory-legal").prompt,
+      /温暖象牙白纸张背景.*深海军蓝.*香槟金/s,
+    );
+    assert.match(
+      stylesBody.styles.find((style) => style.id === "beemax-poster-navy-admissions").prompt,
+      /深海军蓝渐变背景.*少量高饱和红色只用于关键截止日期/s,
+    );
+
+    const renderResponse = await fetch(`${baseUrl}/api/beemax/prompt-presets/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        style_id: "beemax-poster-emerald-data",
+        content: {
+          主题: "年度业务数据",
+          品牌名称: "示例集团",
+          主标题: "2026 年度增长报告",
+          副标题: "稳健经营，长期增长",
+          核心数据: "312.9 亿元，同比增长 39%",
+          信息模块一: "规模｜全年新造业务保费",
+          信息模块二: "增长｜核心市场持续增长",
+          信息模块三: "排名｜区域市场第 2 位",
+          CTA: "查看完整报告",
+          合规文字: "数据仅供信息展示，不构成投资建议。",
+        },
+      }),
+    });
+    const rendered = await renderResponse.json();
+
+    assert.equal(renderResponse.status, 200);
+    assert.equal(rendered.style_id, "beemax-poster-emerald-data");
+    assert.equal(rendered.aspect_ratio, "3:4");
+    assert.match(rendered.prompt, /【固定风格 STYLE LOCK】/);
+    assert.match(rendered.prompt, /翡翠绿和青绿色单色体系/);
+    assert.match(rendered.prompt, /品牌名称：示例集团/);
+    assert.match(rendered.prompt, /核心数字或日期：312\.9 亿元，同比增长 39%/);
+    assert.doesNotMatch(rendered.prompt, /\{\{/);
+
+    const incompleteResponse = await fetch(
+      `${baseUrl}/api/beemax/prompt-presets/render`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          style_id: "beemax-poster-emerald-data",
+          content: { 主题: "年度业务数据" },
+        }),
+      },
+    );
+    const incomplete = await incompleteResponse.json();
+    assert.equal(incompleteResponse.status, 422);
+    assert.match(incomplete.error, /缺少 CONTENT 字段/);
+
+    const placeholderResponse = await fetch(
+      `${baseUrl}/api/beemax/prompt-presets/render`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          style_id: "beemax-poster-emerald-data",
+          content: {
+            主题: "年度业务数据",
+            品牌名称: "{{品牌名称}}",
+            主标题: "2026 年度增长报告",
+            副标题: "稳健经营，长期增长",
+            核心数据: "312.9 亿元，同比增长 39%",
+            信息模块一: "规模｜全年新造业务保费",
+            信息模块二: "增长｜核心市场持续增长",
+            信息模块三: "排名｜区域市场第 2 位",
+            CTA: "查看完整报告",
+            合规文字: "数据仅供信息展示，不构成投资建议。",
+          },
+        }),
+      },
+    );
+    const placeholder = await placeholderResponse.json();
+    assert.equal(placeholderResponse.status, 422);
+    assert.match(placeholder.error, /仍包含占位符/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
   }
 });
