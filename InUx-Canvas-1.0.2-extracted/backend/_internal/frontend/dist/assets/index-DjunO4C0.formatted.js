@@ -51112,15 +51112,27 @@ function aD({
   });
 }
 var oD = (e = []) =>
-    [...new Set((Array.isArray(e) ? e : []).filter(Boolean))].slice(0, 9),
+    [...new Set((Array.isArray(e) ? e : []).filter(Boolean))].slice(0, 10),
   sD = (e = {}) => {
     let t = e && typeof e == `object` ? e : {};
     return {
       prompt: typeof t.prompt == `string` ? t.prompt.trim() : ``,
       type: t.type === `generateVideo` ? `generateVideo` : `generateImage`,
+      projectName:
+        typeof t.projectName == `string` ? t.projectName.trim().slice(0, 36) : ``,
+      autoRun: t.autoRun === !0,
       apiId: t.apiId || ``,
       model: t.model || ``,
       uploadedReferenceImages: oD(t.uploadedReferenceImages),
+      imageOperation: t.imageOperation || `generate`,
+      maskUrl: t.maskUrl || ``,
+      imageNegativePrompt: t.imageNegativePrompt || ``,
+      imageSize: t.imageSize || `3:4`,
+      imageResolution: t.imageResolution || `1k`,
+      imageCount: Math.max(1, Math.min(Number(t.imageCount) || 1, 4)),
+      videoAspectRatio: t.videoAspectRatio || `16:9`,
+      videoDuration: t.videoDuration || `8`,
+      videoResolution: t.videoResolution || `720p`,
     };
   },
   cD = (e = {}) => {
@@ -51133,6 +51145,15 @@ var oD = (e = []) =>
       videoModel: n ? t.model : ``,
       videoApiId: n ? t.apiId : ``,
       uploadedReferenceImages: t.uploadedReferenceImages,
+      imageOperation: t.imageOperation,
+      maskUrl: t.maskUrl,
+      imageNegativePrompt: t.imageNegativePrompt,
+      imageSize: t.imageSize,
+      imageResolution: t.imageResolution,
+      imageCount: t.imageCount,
+      videoAspectRatio: t.videoAspectRatio,
+      videoDuration: t.videoDuration,
+      videoResolution: t.videoResolution,
     };
   };
 function lD(e, t) {
@@ -52734,6 +52755,7 @@ function Rk({
     [w, T, E] = Ll(C.nodes),
     [D, O, k] = Rl(C.edges),
     A = (0, v.useRef)(new Map()),
+    quickAutoRunRef = (0, v.useRef)(null),
     j = (0, v.useCallback)(
       (t, n = {}) => {
         if (!t) return;
@@ -57504,6 +57526,10 @@ function Rk({
               n: 1,
               image_urls: s,
               video_urls: c,
+              operation: t.image_operation || `generate`,
+              mask_image: t.mask_url
+                ? { url: t.mask_url, role: `mask` }
+                : null,
             },
             generationConfig: {
               ...i,
@@ -57514,6 +57540,8 @@ function Rk({
               image_size: t.image_size || `3:4`,
               image_resolution: t.image_resolution || `1k`,
               image_count: d,
+              image_operation: t.image_operation || `generate`,
+              mask_url: t.mask_url || ``,
             },
           };
         }
@@ -57864,6 +57892,13 @@ function Rk({
                     : void 0,
                 image_model: r.imageModel || ``,
                 image_api_id: r.imageApiId || ``,
+                image_size: r.imageSize || r.image_size || `3:4`,
+                image_resolution:
+                  r.imageResolution || r.image_resolution || `1k`,
+                image_count: r.imageCount || r.image_count || 1,
+                image_operation:
+                  r.imageOperation || r.image_operation || `generate`,
+                mask_url: r.maskUrl || r.mask_url || ``,
                 video_prompt: r.videoPrompt || (e === `generateVideo` ? h : ``),
                 video_model: r.videoModel || ``,
                 video_api_id: r.videoApiId || ``,
@@ -60006,6 +60041,13 @@ function Rk({
       [Ct, X, Rr, Kt, Xt, qt, he, O, T, Zt],
     );
   (0, v.useEffect)(() => {
+    let e = quickAutoRunRef.current;
+    if (e && w.some((t) => t.id === e)) {
+      quickAutoRunRef.current = null;
+      Sr(e);
+    }
+  }, [w, Sr]);
+  (0, v.useEffect)(() => {
     let e = _?.current;
     if (e) {
       if (((_.current = null), e.kind === `material`)) {
@@ -60016,12 +60058,13 @@ function Rk({
         zr(e.item);
         return;
       }
-      Or(
+      let t = Or(
         e.type === `generateVideo` ? `generateVideo` : `generateImage`,
         { x: 240, y: 240 },
         null,
         cD(e),
       );
+      e.autoRun && t && (quickAutoRunRef.current = t);
     }
   }, [Lr, zr, Or, _]);
   let Hr = (0, v.useCallback)(() => {
@@ -61910,6 +61953,286 @@ function fA({
     ],
   });
 }
+var quickCreateModes_ = Object.freeze([
+  { id: `generate`, label: `直接生成`, icon: `sparkles` },
+  { id: `poster`, label: `商业海报`, icon: `apps` },
+  { id: `reference`, label: `参考图生成`, icon: `image` },
+  { id: `edit`, label: `图片编辑`, icon: `edit` },
+  { id: `mask`, label: `Mask 重绘`, icon: `brush` },
+  { id: `outpaint`, label: `扩图`, icon: `crop` },
+  { id: `variation`, label: `生成变体`, icon: `copy` },
+]);
+async function validateQuickMask_(e, t) {
+  if (!e || e.type !== `image/png`)
+    throw Error(`Mask 必须使用带透明区域的 PNG 图片`);
+  if (!t) throw Error(`Mask 重绘需要先上传一张源图片`);
+  let [n, r] = await Promise.all([createImageBitmap(e), createImageBitmap(t)]);
+  try {
+    if (n.width !== r.width || n.height !== r.height)
+      throw Error(`Mask 尺寸必须与第一张源图片一致（${r.width}×${r.height}）`);
+    let e = document.createElement(`canvas`);
+    ((e.width = n.width), (e.height = n.height));
+    let t = e.getContext(`2d`, { willReadFrequently: !0 });
+    if (!t) throw Error(`浏览器无法读取 Mask 图片`);
+    t.drawImage(n, 0, 0);
+    let i = t.getImageData(0, 0, n.width, n.height).data,
+      a = !1;
+    for (let e = 3; e < i.length; e += 4)
+      if (i[e] < 255) {
+        a = !0;
+        break;
+      }
+    if (!a) throw Error(`Mask PNG 必须包含透明区域`);
+  } finally {
+    (n.close(), r.close());
+  }
+}
+function QuickCreatePanel_({
+  onCreateProject: e,
+  runtimeSettings: t,
+  promptStyles: n = [],
+}) {
+  let [r, i] = (0, v.useState)(`image`),
+    [a, o] = (0, v.useState)(`generate`),
+    [s, c] = (0, v.useState)(``),
+    [l, u] = (0, v.useState)(``),
+    [d, f] = (0, v.useState)([]),
+    [p, m] = (0, v.useState)(null),
+    [h, g] = (0, v.useState)(`3:4`),
+    [_, y] = (0, v.useState)(`1k`),
+    [b, x] = (0, v.useState)(1),
+    [S, C] = (0, v.useState)(`8`),
+    [w, T] = (0, v.useState)(`idle`),
+    [E, D] = (0, v.useState)(``),
+    [O, k] = (0, v.useState)(``),
+    [A, j] = (0, v.useState)(``),
+    M = (0, v.useRef)(null),
+    N = (0, v.useRef)(null),
+    quickPreviewCleanupRef = (0, v.useRef)([]),
+    P = (0, v.useMemo)(
+      () => P_(t?.providers || [], [], r === `video` ? `video` : `image`),
+      [t?.providers, r],
+    ),
+    F = P.find((e) => e.id === O) || P[0] || null,
+    I = F?.models || [],
+    L = I.includes(A) ? A : F?.defaultModel || I[0] || ``,
+    R = d.map((e) => e.preview);
+  quickPreviewCleanupRef.current = [...R, p?.preview].filter(Boolean);
+  ((0, v.useEffect)(() => {
+    F?.id && F.id !== O && k(F.id);
+  }, [F?.id, O]),
+    (0, v.useEffect)(() => {
+      L && L !== A && j(L);
+    }, [L, A]),
+    (0, v.useEffect)(
+      () => () =>
+        quickPreviewCleanupRef.current.forEach((e) => URL.revokeObjectURL(e)),
+      [],
+    ));
+  let z = (0, v.useCallback)((e) => {
+      let t = Array.from(e.target.files || []).filter(d_).slice(0, 10);
+      (f((e) => {
+        let n = Math.max(0, 10 - e.length);
+        return [
+          ...e,
+          ...t.slice(0, n).map((e) => ({
+            file: e,
+            preview: URL.createObjectURL(e),
+          })),
+        ];
+      }),
+        (e.target.value = ``),
+        D(``),
+        T(`idle`));
+    }, []),
+    B = (0, v.useCallback)((e) => {
+      let t = Array.from(e.target.files || []).find((e) => e.type === `image/png`);
+      e.target.value = ``;
+      if (!t) {
+        (T(`error`), D(`Mask 必须使用带透明区域的 PNG 图片`));
+        return;
+      }
+      (m((e) => {
+        e?.preview && URL.revokeObjectURL(e.preview);
+        return { file: t, preview: URL.createObjectURL(t) };
+      }),
+        D(``),
+        T(`idle`));
+    }, []),
+    V = (0, v.useCallback)((e) => {
+      f((t) => {
+        let n = t[e];
+        return (n?.preview && URL.revokeObjectURL(n.preview), t.filter((t, n) => n !== e));
+      });
+    }, []),
+    H = (0, v.useCallback)((e) => {
+      (c(e.prompt || ``), g(`3:4`), D(`模板 Prompt 已生成，可继续补充后直接创作`), T(`success`));
+    }, []),
+    U = (0, v.useCallback)(async () => {
+      let t = s.trim();
+      if (!t) {
+        (T(`error`), D(`请输入生成内容`));
+        return;
+      }
+      let n = r === `image` && [`reference`, `edit`, `mask`, `outpaint`, `variation`].includes(a);
+      if (n && d.length === 0) {
+        (T(`error`), D(`当前模式需要先上传至少一张源图片`));
+        return;
+      }
+      if (r === `image` && a === `mask` && !p) {
+        (T(`error`), D(`Mask 重绘需要同时上传源图片和 Mask`));
+        return;
+      }
+      if (!F?.id || !L) {
+        (T(`error`), D(`请先在 AI 配置中启用可用的${r === `video` ? `视频` : `生图`}模型`));
+        return;
+      }
+      (T(`loading`), D(`正在上传素材并创建生成任务…`));
+      try {
+        r === `image` && a === `mask` &&
+          (await validateQuickMask_(p.file, d[0]?.file));
+        let n = await Promise.all(d.map((e) => p_(e.file))),
+          o = p ? await p_(p.file) : null,
+          c =
+            a === `edit`
+              ? `edit`
+              : a === `mask`
+                ? `mask`
+                : a === `outpaint`
+                  ? `outpaint`
+                  : a === `variation`
+                    ? `variation`
+                    : `generate`,
+          u = t.replace(/\s+/g, ` `).slice(0, 18) || `快速创作`;
+        e({
+          projectName: u,
+          autoRun: !0,
+          type: r === `video` ? `generateVideo` : `generateImage`,
+          prompt: t,
+          apiId: F.id,
+          model: L,
+          uploadedReferenceImages: n.map((e) => e.url),
+          imageOperation: c,
+          maskUrl: o?.url || ``,
+          imageNegativePrompt: l,
+          imageSize: h,
+          imageResolution: _,
+          imageCount: b,
+          videoAspectRatio: h,
+          videoDuration: S,
+          videoResolution: _,
+        });
+      } catch (e) {
+        (T(`error`), D(e.message || `创建任务失败，请稍后重试`));
+      }
+    }, [s, r, a, d, p, F, L, e, l, h, _, b, S]);
+  return (0, Q.jsxs)(`section`, {
+    className: `quick-create-panel`,
+    children: [
+      (0, Q.jsxs)(`div`, {
+        className: `quick-create-heading`,
+        children: [
+          (0, Q.jsxs)(`div`, {
+            children: [
+              (0, Q.jsx)(`span`, { className: `quick-create-eyebrow`, children: `BEEMAX CREATE` }),
+              (0, Q.jsx)(`h1`, { children: `灵感醒了，就先画出来。` }),
+            ],
+          }),
+          (0, Q.jsx)(`span`, { className: `quick-create-auto-badge`, children: `生成后自动进入画布` }),
+        ],
+      }),
+      (0, Q.jsxs)(`div`, {
+        className: `quick-create-composer`,
+        children: [
+          (0, Q.jsxs)(`div`, {
+            className: `quick-create-type-tabs`,
+            role: `tablist`,
+            children: [
+              (0, Q.jsxs)(`button`, {
+                className: `quick-create-type-tab ${r === `image` ? `active` : ``}`,
+                onClick: () => (i(`image`), g(`3:4`), y(`1k`)),
+                role: `tab`,
+                "aria-selected": r === `image`,
+                children: [(0, Q.jsx)($, { name: `image`, size: 16 }), `图片`],
+              }),
+              (0, Q.jsxs)(`button`, {
+                className: `quick-create-type-tab ${r === `video` ? `active` : ``}`,
+                onClick: () => (i(`video`), o(`generate`), g(`16:9`), y(`720p`)),
+                role: `tab`,
+                "aria-selected": r === `video`,
+                children: [(0, Q.jsx)($, { name: `video`, size: 16 }), `视频`],
+              }),
+            ],
+          }),
+          (R.length > 0 || r === `image` && a !== `generate`) &&
+            (0, Q.jsxs)(`div`, {
+              className: `quick-create-assets`,
+              children: [
+                R.map((e, t) =>
+                  (0, Q.jsxs)(`div`, {
+                    className: `quick-create-asset`,
+                    children: [
+                      (0, Q.jsx)(`img`, { src: e, alt: `参考图 ${t + 1}` }),
+                      (0, Q.jsx)(`button`, { onClick: () => V(t), "aria-label": `移除参考图 ${t + 1}`, children: `×` }),
+                    ],
+                  }, e),
+                ),
+                d.length < 10 && (0, Q.jsx)(`button`, { className: `quick-create-add-asset`, onClick: () => M.current?.click(), children: `+ 添加图片` }),
+                a === `mask` && (0, Q.jsx)(`button`, { className: `quick-create-mask-asset ${p ? `ready` : ``}`, onClick: () => N.current?.click(), children: p ? `Mask 已添加` : `+ 添加 Mask` }),
+              ],
+            }),
+          (0, Q.jsx)(`textarea`, {
+            className: `quick-create-prompt`,
+            value: s,
+            onChange: (e) => (c(e.target.value), T(`idle`), D(``)),
+            placeholder: r === `video` ? `描述你要生成的视频、镜头运动和氛围` : `描述你要生成的画面`,
+            rows: 4,
+            onKeyDown: (e) => {
+              (e.metaKey || e.ctrlKey) && e.key === `Enter` && (e.preventDefault(), U());
+            },
+          }),
+          r === `image` && a === `poster` &&
+            (0, Q.jsx)(PosterTemplatePanel_, {
+              styles: n,
+              referenceCount: d.length,
+              onUpload: () => M.current?.click(),
+              onApply: H,
+            }),
+          r === `image` &&
+            (0, Q.jsx)(`details`, {
+              className: `quick-create-advanced`,
+              children: (0, Q.jsxs)(Q.Fragment, {
+                children: [
+                  (0, Q.jsx)(`summary`, { children: `高级控制与反向提示词` }),
+                  (0, Q.jsx)(`textarea`, { value: l, onChange: (e) => u(e.target.value), placeholder: `可选：不希望画面中出现的内容`, rows: 2 }),
+                ],
+              }),
+            }),
+          (0, Q.jsxs)(`div`, {
+            className: `quick-create-controls`,
+            children: [
+              d.length === 0 && (0, Q.jsx)(`button`, { className: `quick-create-upload-shortcut`, onClick: () => M.current?.click(), children: `+ 参考图` }),
+              (0, Q.jsx)(`select`, { value: O || F?.id || ``, onChange: (e) => k(e.target.value), "aria-label": `AI Provider`, children: P.length ? P.map((e) => (0, Q.jsx)(`option`, { value: e.id, children: e.name || e.id }, e.id)) : (0, Q.jsx)(`option`, { value: ``, children: `未配置 AI` }) }),
+              (0, Q.jsx)(`select`, { value: L, onChange: (e) => j(e.target.value), "aria-label": `生成模型`, children: I.map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
+              r === `image` && (0, Q.jsx)(`select`, { value: b, onChange: (e) => x(Number(e.target.value)), "aria-label": `生成数量`, children: [1, 2, 3, 4].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 张` }, e)) }),
+              (0, Q.jsx)(`select`, { value: h, onChange: (e) => g(e.target.value), "aria-label": `画面比例`, children: (r === `video` ? [`16:9`, `9:16`, `1:1`] : [`3:4`, `1:1`, `16:9`, `9:16`, `4:3`]).map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
+              (0, Q.jsx)(`select`, { value: _, onChange: (e) => y(e.target.value), "aria-label": `分辨率`, children: (r === `video` ? [`720p`, `1080p`] : [`1k`, `2k`, `4k`]).map((e) => (0, Q.jsx)(`option`, { value: e, children: e.toUpperCase() }, e)) }),
+              r === `video` && (0, Q.jsx)(`select`, { value: S, onChange: (e) => C(e.target.value), "aria-label": `视频时长`, children: [`5`, `8`, `10`, `15`].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 秒` }, e)) }),
+              (0, Q.jsx)(`button`, { className: `quick-create-submit`, onClick: U, disabled: w === `loading`, title: `开始创作（⌘ Enter）`, "aria-label": `开始创作`, children: w === `loading` ? (0, Q.jsx)($, { name: `loader`, size: 20 }) : (0, Q.jsx)(`span`, { className: `quick-create-submit-arrow`, children: `↑` }) }),
+            ],
+          }),
+          E && (0, Q.jsx)(`p`, { className: `quick-create-message ${w}`, role: w === `error` ? `alert` : `status`, children: E }),
+          (0, Q.jsx)(`input`, { ref: M, type: `file`, accept: l_, multiple: !0, hidden: !0, onChange: z }),
+          (0, Q.jsx)(`input`, { ref: N, type: `file`, accept: `image/png`, hidden: !0, onChange: B }),
+        ],
+      }),
+      r === `image` && (0, Q.jsx)(`div`, {
+        className: `quick-create-modes`,
+        children: quickCreateModes_.map((e) => (0, Q.jsxs)(`button`, { className: `quick-create-mode ${a === e.id ? `active` : ``}`, onClick: () => (o(e.id), D(``), T(`idle`)), children: [(0, Q.jsx)($, { name: e.icon, size: 16 }), e.label] }, e.id)),
+      }),
+    ],
+  });
+}
 function pA({
   projects: e,
   onCreateProject: t,
@@ -61917,6 +62240,8 @@ function pA({
   onRenameProject: r,
   onDeleteProject: i,
   onDeleteProjects: a,
+  runtimeSettings: quickRuntimeSettings,
+  promptStyles: quickPromptStyles,
 }) {
   let [o, s] = (0, v.useState)(null),
     [c, l] = (0, v.useState)(null),
@@ -61995,7 +62320,7 @@ function pA({
     className: `workspace-page`,
     children: [
       (0, Q.jsxs)(`div`, {
-        className: `page-header`,
+        className: `page-header quick-create-page-header`,
         children: [
           (0, Q.jsx)(`h1`, { children: `画布` }),
           (0, Q.jsx)(`button`, {
@@ -62004,6 +62329,18 @@ function pA({
             onClick: T,
             children: (0, Q.jsx)($, { name: `batch`, size: 20 }),
           }),
+        ],
+      }),
+      (0, Q.jsx)(QuickCreatePanel_, {
+        onCreateProject: t,
+        runtimeSettings: quickRuntimeSettings,
+        promptStyles: quickPromptStyles,
+      }),
+      (0, Q.jsxs)(`div`, {
+        className: `project-section-heading`,
+        children: [
+          (0, Q.jsx)(`h2`, { children: `最近项目` }),
+          (0, Q.jsx)(`span`, { children: `${e.length} 个项目` }),
         ],
       }),
       (0, Q.jsxs)(`div`, {
@@ -62508,8 +62845,8 @@ function hA() {
       (o(e), i(`canvas`));
     }, []),
     oe = (0, v.useCallback)((e) => {
-      let t = Zk(),
-        r = sD(typeof e == `object` && e ? e : { prompt: e });
+      let r = sD(typeof e == `object` && e ? e : { prompt: e }),
+        t = Zk(r.projectName || `Untitled`);
       ((r.prompt ||
         r.model ||
         r.apiId ||
@@ -62701,6 +63038,8 @@ function hA() {
                         onRenameProject: K,
                         onDeleteProject: q,
                         onDeleteProjects: le,
+                        runtimeSettings: N,
+                        promptStyles: O,
                       }),
           ],
         });
