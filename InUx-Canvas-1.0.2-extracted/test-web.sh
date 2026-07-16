@@ -7,11 +7,16 @@ PORT="${INUX_TEST_PORT:-17952}"
 BASE_URL="http://127.0.0.1:$PORT"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/inux-canvas-web.XXXXXX")"
 LAUNCHER_PID=""
+CDP_PID=""
 
 cleanup() {
   if [[ -n "$LAUNCHER_PID" ]] && kill -0 "$LAUNCHER_PID" >/dev/null 2>&1; then
     kill "$LAUNCHER_PID" >/dev/null 2>&1 || true
     wait "$LAUNCHER_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$CDP_PID" ]] && kill -0 "$CDP_PID" >/dev/null 2>&1; then
+    kill "$CDP_PID" >/dev/null 2>&1 || true
+    wait "$CDP_PID" >/dev/null 2>&1 || true
   fi
   rm -rf "$TEST_DIR"
 }
@@ -78,7 +83,11 @@ curl --noproxy '*' -fsS --max-time 5 "$BASE_URL$asset_path" >"$TEST_DIR/app.js"
 grep -q 'AI 配置' "$TEST_DIR/app.js"
 grep -q '选择图片风格' "$TEST_DIR/app.js"
 grep -q '上传参考图' "$TEST_DIR/app.js"
-grep -Fq '"未命名中转站"===e.name?"未命名 AI 配置"' "$TEST_DIR/app.js"
+grep -q '商业海报模板' "$TEST_DIR/app.js"
+grep -q '生成并填入 Prompt' "$TEST_DIR/app.js"
+grep -q '核心数字或日期' "$TEST_DIR/app.js"
+grep -q '商业海报模板已锁定 3:4' "$TEST_DIR/app.js"
+grep -q '未命名 AI 配置' "$TEST_DIR/app.js"
 if grep -Eq '配置中转站|还没有中转站|中转站名称|children:"中转站"' "$TEST_DIR/app.js"; then
   print -u2 "前端仍包含旧的中转站文案"
   exit 1
@@ -108,6 +117,30 @@ if grep -q '页面运行时出错' "$TEST_DIR/rendered.html"; then
   print -u2 "浏览器渲染进入错误边界"
   exit 1
 fi
+
+CDP_PORT=$((PORT + 1000))
+"$CHROME" \
+  --headless \
+  --disable-gpu \
+  --no-first-run \
+  --remote-debugging-port="$CDP_PORT" \
+  --user-data-dir="$TEST_DIR/chrome-cdp-profile" \
+  "$BASE_URL/" >"$TEST_DIR/chrome-cdp.log" 2>&1 &
+CDP_PID=$!
+
+cdp_ready=0
+for _ in {1..50}; do
+  if curl --noproxy '*' -fsS --max-time 0.5 "http://127.0.0.1:$CDP_PORT/json/list" >/dev/null 2>&1; then
+    cdp_ready=1
+    break
+  fi
+  sleep 0.1
+done
+(( cdp_ready ))
+"$NODE_BIN" "$ROOT_DIR/bridge/test/poster-ui-browser-smoke.mjs" "http://127.0.0.1:$CDP_PORT"
+kill "$CDP_PID" >/dev/null 2>&1 || true
+wait "$CDP_PID" >/dev/null 2>&1 || true
+CDP_PID=""
 
 curl --noproxy '*' -fsS --max-time 3 \
   -H 'Content-Type: application/json' \

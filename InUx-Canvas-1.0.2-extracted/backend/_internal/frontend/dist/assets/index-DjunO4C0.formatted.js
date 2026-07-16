@@ -28920,6 +28920,191 @@ var w_ = [
       [...i.values()]
     );
   };
+var posterContentFields_ = Object.freeze([
+  { key: `主题`, label: `行业主题`, placeholder: `例如：保险年度业绩` },
+  { key: `品牌名称`, label: `品牌名称`, placeholder: `使用真实品牌文字` },
+  { key: `主标题`, label: `主标题`, placeholder: `海报最醒目的信息` },
+  { key: `副标题`, label: `副标题`, placeholder: `一句补充说明` },
+  { key: `核心数据`, label: `核心数字或日期`, placeholder: `例如：312.9 亿港元` },
+  { key: `信息模块一`, label: `信息模块一`, placeholder: `标题｜说明` },
+  { key: `信息模块二`, label: `信息模块二`, placeholder: `标题｜说明` },
+  { key: `信息模块三`, label: `信息模块三`, placeholder: `标题｜说明` },
+  { key: `CTA`, label: `行动号召`, placeholder: `例如：立即了解详情` },
+  { key: `合规文字`, label: `免责声明`, placeholder: `输入需要原样保留的合规文字`, multiline: !0 },
+]),
+  posterStyleIds_ = Object.freeze([
+    `beemax-poster-emerald-data`,
+    `beemax-poster-ivory-legal`,
+    `beemax-poster-navy-admissions`,
+  ]);
+function posterContentDefaults_() {
+  return Object.fromEntries(posterContentFields_.map((e) => [e.key, ``]));
+}
+function PosterTemplatePanel_({
+  styles: e = [],
+  referenceCount: t = 0,
+  uploadDisabled: n = !1,
+  onUpload: r,
+  onApply: i,
+}) {
+  let a = (0, v.useMemo)(
+      () =>
+        posterStyleIds_
+          .map((t) => e.find((e) => e?.id === t))
+          .filter(Boolean),
+      [e],
+    ),
+    [o, s] = (0, v.useState)(``),
+    [c, l] = (0, v.useState)(posterContentDefaults_),
+    [u, d] = (0, v.useState)([]),
+    [f, p] = (0, v.useState)(`idle`),
+    [m, h] = (0, v.useState)(``),
+    g = o || a[0]?.id || ``;
+  if (a.length === 0) return null;
+  let _ = (e, t) => {
+      (l((n) => ({ ...n, [e]: t })),
+        d((t) => t.filter((t) => t !== e)),
+        h(``),
+        f === `success` && p(`idle`));
+    },
+    y = async () => {
+      let e = posterContentFields_
+        .filter((e) => !String(c[e.key] || ``).trim())
+        .map((e) => e.key);
+      if (e.length > 0) {
+        (d(e), h(`请填写：${e.join(`、`)}`), p(`error`));
+        return;
+      }
+      (d([]), h(``), p(`loading`));
+      try {
+        let e = await x_(`/api/beemax/prompt-presets/render`, {
+          method: `POST`,
+          body: JSON.stringify({ style_id: g, content: c }),
+        });
+        if (!e?.prompt) throw Error(`模板服务未返回 Prompt`);
+        (i?.(e), p(`success`));
+      } catch (e) {
+        (h(e.message || `生成 Prompt 失败`), p(`error`));
+      }
+    };
+  return (0, Q.jsxs)(`section`, {
+    className: `poster-template-panel`,
+    "aria-labelledby": `poster-template-title`,
+    children: [
+      (0, Q.jsxs)(`header`, {
+        className: `poster-template-header`,
+        children: [
+          (0, Q.jsxs)(`div`, {
+            children: [
+              (0, Q.jsx)(`strong`, {
+                id: `poster-template-title`,
+                children: `商业海报模板`,
+              }),
+              (0, Q.jsx)(`span`, {
+                children: `固定风格，只替换内容变量`,
+              }),
+            ],
+          }),
+          (0, Q.jsx)(`span`, {
+            className: `poster-template-format`,
+            children: `3:4 · 1080×1440`,
+          }),
+        ],
+      }),
+      (0, Q.jsx)(`div`, {
+        className: `poster-template-style-list`,
+        role: `radiogroup`,
+        "aria-label": `海报固定风格`,
+        children: a.map((e) =>
+          (0, Q.jsxs)(
+            `button`,
+            {
+              type: `button`,
+              role: `radio`,
+              "aria-checked": g === e.id,
+              className: `poster-template-style ${g === e.id ? `active` : ``}`,
+              onClick: () => s(e.id),
+              children: [
+                (0, Q.jsx)(`span`, { className: `poster-template-style-dot` }),
+                (0, Q.jsx)(`span`, { children: e.name }),
+              ],
+            },
+            e.id,
+          ),
+        ),
+      }),
+      (0, Q.jsx)(`div`, {
+        className: `poster-template-fields`,
+        children: posterContentFields_.map((e) =>
+          (0, Q.jsxs)(
+            `label`,
+            {
+              className: `${e.multiline ? `wide` : ``} ${u.includes(e.key) ? `invalid` : ``}`,
+              children: [
+                (0, Q.jsx)(`span`, { children: e.label }),
+                e.multiline
+                  ? (0, Q.jsx)(`textarea`, {
+                      value: c[e.key],
+                      onChange: (t) => _(e.key, t.target.value),
+                      placeholder: e.placeholder,
+                      rows: 2,
+                      "aria-invalid": u.includes(e.key),
+                    })
+                  : (0, Q.jsx)(`input`, {
+                      value: c[e.key],
+                      onChange: (t) => _(e.key, t.target.value),
+                      placeholder: e.placeholder,
+                      "aria-invalid": u.includes(e.key),
+                    }),
+              ],
+            },
+            e.key,
+          ),
+        ),
+      }),
+      (0, Q.jsxs)(`div`, {
+        className: `poster-template-footer`,
+        children: [
+          (0, Q.jsxs)(`div`, {
+            className: `poster-template-reference`,
+            children: [
+              (0, Q.jsx)(`button`, {
+                type: `button`,
+                onClick: r,
+                disabled: n,
+                children: `上传参考图`,
+              }),
+              (0, Q.jsxs)(`span`, {
+                children: [
+                  t > 0 ? `已添加 ${t} 张` : `未添加参考图`,
+                  ` · 内容变、风格不变时建议上传上一次成品`,
+                ],
+              }),
+            ],
+          }),
+          (0, Q.jsx)(`button`, {
+            type: `button`,
+            className: `poster-template-apply`,
+            onClick: y,
+            disabled: f === `loading`,
+            children:
+              f === `loading`
+                ? `正在生成 Prompt...`
+                : f === `success`
+                  ? `已填入最终 Prompt`
+                  : `生成并填入 Prompt`,
+          }),
+        ],
+      }),
+      m &&
+        (0, Q.jsx)(`p`, {
+          className: `poster-template-message ${f}`,
+          role: f === `error` ? `alert` : `status`,
+          children: m,
+        }),
+    ],
+  });
+}
 function F_({
   initialPrompt: e = ``,
   initialNegativePrompt: t = ``,
@@ -28948,6 +29133,7 @@ function F_({
     [I, L] = (0, v.useState)(``),
     [R, z] = (0, v.useState)(!1),
     [ve, he] = (0, v.useState)(() => (n.length > 0 ? `edit` : `generate`)),
+    [posterRatioLocked, setPosterRatioLocked] = (0, v.useState)(!1),
     B = (0, v.useRef)(null),
     V = (0, v.useCallback)((e) => {
       d((t) => C_(t, e));
@@ -29135,6 +29321,16 @@ function F_({
                   children: w,
                 }),
               }),
+            (0, Q.jsx)(PosterTemplatePanel_, {
+              styles: a,
+              referenceCount: U.length + _.length,
+              uploadDisabled: W === 0,
+              onUpload: () => H.current?.click(),
+              onApply: (e) => {
+                let t = e.aspect_ratio || `3:4`;
+                (d(e.prompt), D(t), k(h_(t)), setPosterRatioLocked(!0), T(``));
+              },
+            }),
             (0, Q.jsxs)(`div`, {
               className: `node-field`,
               children: [
@@ -29365,8 +29561,10 @@ function F_({
                       type: `button`,
                       className: `storyboard-generator-ratio-trigger`,
                       onClick: () => z((e) => !e),
+                      disabled: posterRatioLocked,
+                      title: posterRatioLocked ? `商业海报模板已锁定 3:4` : `选择画幅`,
                       children: [
-                        __(E, O),
+                        posterRatioLocked ? `${__(E, O)} · 模板锁定` : __(E, O),
                         (0, Q.jsx)($, { name: `chevronDown`, size: 10 }),
                       ],
                     }),
@@ -34272,10 +34470,27 @@ var ib = () => {
       [e],
     );
   },
-  ab = ({ label: e, channel: t, value: n, shape: r, active: i, onClick: a }) =>
+  ab = ({
+    label: e,
+    channel: t,
+    value: n,
+    shape: r,
+    active: i,
+    onClick: a,
+    disabled: o = !1,
+  }) =>
     (0, Q.jsxs)(`div`, {
-      className: `ratio-card ${i ? `active` : ``}`,
-      onClick: a,
+      className: `ratio-card ${i ? `active` : ``} ${o ? `disabled` : ``}`,
+      onClick: o ? void 0 : a,
+      onKeyDown: o
+        ? void 0
+        : (e) => {
+            (`Enter` === e.key || ` ` === e.key) && (e.preventDefault(), a?.());
+          },
+      role: `button`,
+      tabIndex: o ? -1 : 0,
+      "aria-disabled": o,
+      title: o ? `商业海报模板已锁定 3:4` : void 0,
       children: [
         (0, Q.jsx)(`div`, { className: `ratio-card-icon ${r}` }),
         t
@@ -34501,6 +34716,7 @@ function pb({ id: e, data: t }) {
     [u, d] = (0, v.useState)(Zy(t?.uploadedReferenceImages || [])),
     [f, p] = (0, v.useState)([]),
     [m, h] = (0, v.useState)(!1),
+    [posterRatioLocked, setPosterRatioLocked] = (0, v.useState)(!1),
     [g, _] = (0, v.useState)(t?.text_api_id || t?.activeProviderId || ``),
     [y, b] = (0, v.useState)(t?.image_api_id || t?.activeProviderId || ``),
     [x, S] = (0, v.useState)(t?.video_api_id || t?.activeProviderId || ``),
@@ -35965,6 +36181,30 @@ function pb({ id: e, data: t }) {
               className: `node-body`,
               children: [
                 ut(),
+                (0, Q.jsx)(PosterTemplatePanel_, {
+                  styles: Be,
+                  referenceCount: Se.length + f.length,
+                  uploadDisabled: Ce === 0 || ze,
+                  onUpload: () => C.current?.click(),
+                  onApply: (n) => {
+                    if (ze) return;
+                    let r = n.aspect_ratio || `3:4`,
+                      i = h_(r);
+                    (z((e) => ({
+                      ...e,
+                      image_prompt: n.prompt,
+                      image_size: r,
+                      image_size_preset: i,
+                    })),
+                      t?.onGeneratorDataChange?.(e, {
+                        image_prompt: n.prompt,
+                        promptDraft: n.prompt,
+                        image_size: r,
+                        image_size_preset: i,
+                      }),
+                      setPosterRatioLocked(!0));
+                  },
+                }),
                 (0, Q.jsxs)(`div`, {
                   className: `node-field`,
                   children: [
@@ -36023,6 +36263,7 @@ function pb({ id: e, data: t }) {
                                     (R.image_size_preset ||
                                       h_(R.image_size)) === e.id,
                                   onClick: () => Ke(e),
+                                  disabled: posterRatioLocked,
                                 },
                                 e.id,
                               ),
@@ -36108,6 +36349,7 @@ function pb({ id: e, data: t }) {
                           ` · `,
                           R.image_count,
                           `张`,
+                          posterRatioLocked ? ` · 模板锁定` : ``,
                         ],
                       }),
                     }),
