@@ -219,6 +219,11 @@ try {
     "advanced node composer should stay hidden while the beginner assistant is active",
   );
   assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-professional'))`),
+    true,
+    "beginner assistant should expose an explicit professional mode entry",
+  );
+  assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
     "图片创作 · 第 1/3 步",
   );
@@ -317,6 +322,46 @@ try {
     "removing the optional reference should remove its Canvas source node",
   );
 
+  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
+  let explicitProfessionalModeReady = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait(100);
+    explicitProfessionalModeReady = await evaluate(
+      `Boolean(document.querySelector('.canvas-composer-dock')) && Boolean(document.querySelector('.canvas-image-assistant')?.hidden)`,
+    );
+    if (explicitProfessionalModeReady) break;
+  }
+  assert.equal(explicitProfessionalModeReady, true, "professional mode button should open the advanced composer");
+  assert.match(
+    await evaluate(`document.querySelector('.canvas-composer-dock .image-mention-editor')?.textContent || ''`),
+    /保持构图，改成科技蓝机械蜜蜂海报/,
+    "professional mode should receive the beginner assistant draft",
+  );
+  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-expand-btn')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-processor-expanded-backdrop'))`),
+    true,
+    "advanced composer should expand into the professional editor",
+  );
+  await evaluate(`document.querySelector('.canvas-processor-expanded-close')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`!document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`),
+    true,
+    "closing the expanded advanced composer should restore the beginner assistant",
+  );
+  assert.equal(
+    await evaluate(`document.activeElement === document.querySelector('.canvas-image-assistant-professional')`),
+    true,
+    "closing professional mode should restore focus to its entry button",
+  );
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.react-flow__node.selected').length`),
+    0,
+    "closing professional mode should clear the active node selection",
+  );
+
   await evaluate(`(() => {
     const result = [...document.querySelectorAll('.result-node')]
       .find((node) => node.textContent.includes('生成图片'))
@@ -333,14 +378,7 @@ try {
   }
   assert.equal(advancedModeReady, true, "selecting a result should switch from the beginner assistant to the advanced composer");
 
-  const panePoint = JSON.parse(
-    await evaluate(`(() => {
-      const rect = document.querySelector('.react-flow__pane')?.getBoundingClientRect();
-      return JSON.stringify({ x: rect ? rect.left + 24 : 24, y: rect ? rect.bottom - 24 : 824 });
-    })()`),
-  );
-  await command("Input.dispatchMouseEvent", { type: "mousePressed", x: panePoint.x, y: panePoint.y, button: "left", clickCount: 1 });
-  await command("Input.dispatchMouseEvent", { type: "mouseReleased", x: panePoint.x, y: panePoint.y, button: "left", clickCount: 1 });
+  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
   let beginnerModeRestored = false;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await wait(100);
@@ -349,7 +387,54 @@ try {
     );
     if (beginnerModeRestored) break;
   }
-  assert.equal(beginnerModeRestored, true, "deselecting a result should restore the beginner assistant");
+  assert.equal(beginnerModeRestored, true, "closing the compact advanced composer should restore the beginner assistant");
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.react-flow__node.selected').length`),
+    0,
+    "closing the compact advanced composer should clear the active node selection",
+  );
+
+  await evaluate(`document.querySelector('.back-button')?.click()`);
+  await wait(300);
+  await evaluate(`document.querySelector('.new-project-card')?.click()`);
+  let emptyCanvasReady = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait(100);
+    emptyCanvasReady = await evaluate(
+      `Boolean(document.querySelector('.canvas-flow-shell')) && document.querySelectorAll('.result-node').length === 0`,
+    );
+    if (emptyCanvasReady) break;
+  }
+  assert.equal(emptyCanvasReady, true, "new blank Canvas should not precreate image nodes");
+  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock'))`),
+    true,
+    "professional mode should work on an empty Canvas",
+  );
+  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.result-node').length`),
+    0,
+    "closing an untouched professional placeholder should restore the empty Canvas",
+  );
+  await evaluate(`(() => {
+    const select = document.querySelector('.canvas-image-assistant-settings [aria-label="图片数量"]');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    descriptor.set.call(select, '2');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
+  await wait(100);
+  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.result-node').length`),
+    1,
+    "closing a configured professional placeholder should preserve the user's settings",
+  );
 } finally {
   socket.close();
 }

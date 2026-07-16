@@ -52424,6 +52424,7 @@ function jk({
   promptStyles: s = [],
   hidden: c = !1,
   onExpand: l,
+  onClose: closeComposer,
 }) {
   let [u, d] = (0, v.useState)(null),
     f = (0, v.useRef)(null),
@@ -52535,6 +52536,15 @@ function jk({
               "aria-label": `放大编辑`,
               children: (0, Q.jsx)($, { name: `expandDiagonal`, size: 15 }),
             }),
+            closeComposer &&
+              (0, Q.jsx)(`button`, {
+                type: `button`,
+                className: `canvas-overlay-close-btn`,
+                onClick: closeComposer,
+                title: `关闭专业模式`,
+                "aria-label": `关闭专业模式`,
+                children: (0, Q.jsx)($, { name: `x`, size: 15 }),
+              }),
             (0, Q.jsx)(
               mb,
               {
@@ -52738,7 +52748,23 @@ function assistantSourceNode_(node, asset, ratio) {
     },
   };
 }
-function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, hidden = !1 }) {
+function assistantProfessionalConfigSnapshot_(data = {}) {
+  return JSON.stringify({
+    promptDraft: data.promptDraft || ``,
+    imagePrompt: data.image_prompt || ``,
+    negativePrompt: data.image_negative_prompt || ``,
+    model: data.image_model || ``,
+    apiId: data.image_api_id || ``,
+    size: data.image_size || `3:4`,
+    resolution: data.image_resolution || `1k`,
+    count: data.image_count || 1,
+    operation: data.image_operation || `generate`,
+    maskUrl: data.mask_url || ``,
+    connectedImages: data.connectedImages || [],
+    uploadedReferenceImages: data.uploadedReferenceImages || [],
+  });
+}
+function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, onProfessionalMode, hidden = !1 }) {
   let [asset, setAsset] = (0, v.useState)(null),
     [prompt, setPrompt] = (0, v.useState)(``),
     [status, setStatus] = (0, v.useState)(`idle`),
@@ -52748,6 +52774,7 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
     [ratio, setRatio] = (0, v.useState)(`3:4`),
     [resolution, setResolution] = (0, v.useState)(`1k`),
     [count, setCount] = (0, v.useState)(1),
+    [settingsTouched, setSettingsTouched] = (0, v.useState)(!1),
     fileInputRef = (0, v.useRef)(null),
     imageProviders = (0, v.useMemo)(() => P_(providers, [], `image`), [providers]),
     activeProvider = imageProviders.find((provider) => provider.id === providerId) || imageProviders[0] || null,
@@ -52829,6 +52856,22 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
           }),
           (0, Q.jsx)(`h2`, { children: `创建你的图片` }),
           (0, Q.jsx)(`p`, { children: `跟随 3 个简单步骤，轻松生成你想要的图片` }),
+          (0, Q.jsxs)(`button`, {
+            type: `button`,
+            className: `canvas-image-assistant-professional`,
+            onClick: () =>
+              onProfessionalMode?.({
+                asset,
+                prompt: prompt.trim(),
+                apiId: activeProvider?.id || ``,
+                model: activeModel,
+                ratio,
+                resolution,
+                count,
+                settingsTouched,
+              }),
+            children: [(0, Q.jsx)($, { name: `settings`, size: 16 }), `专业模式`],
+          }),
         ],
       }),
       (0, Q.jsxs)(`section`, {
@@ -52926,11 +52969,11 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
           (0, Q.jsxs)(`summary`, { children: [(0, Q.jsx)($, { name: `settings`, size: 17 }), `专业设置`] }),
           (0, Q.jsxs)(`div`, {
             children: [
-              (0, Q.jsx)(`select`, { value: providerId || activeProvider?.id || ``, onChange: (event) => setProviderId(event.target.value), "aria-label": `图片 Provider`, children: imageProviders.map((provider) => (0, Q.jsx)(`option`, { value: provider.id, children: provider.name || provider.id }, provider.id)) }),
-              (0, Q.jsx)(`select`, { value: activeModel, onChange: (event) => setModel(event.target.value), "aria-label": `图片模型`, children: availableModels.map((modelName) => (0, Q.jsx)(`option`, { value: modelName, children: modelName }, modelName)) }),
-              (0, Q.jsx)(`select`, { value: count, onChange: (event) => setCount(Number(event.target.value)), "aria-label": `图片数量`, children: [1, 2, 3, 4].map((amount) => (0, Q.jsx)(`option`, { value: amount, children: `${amount} 张` }, amount)) }),
-              (0, Q.jsx)(`select`, { value: ratio, onChange: (event) => setRatio(event.target.value), "aria-label": `图片比例`, children: quickImageRatios_.map((preset) => (0, Q.jsx)(`option`, { value: preset.id, children: preset.id }, preset.id)) }),
-              (0, Q.jsx)(`select`, { value: resolution, onChange: (event) => setResolution(event.target.value), "aria-label": `图片分辨率`, children: [`1k`, `2k`, `4k`].map((resolutionOption) => (0, Q.jsx)(`option`, { value: resolutionOption, children: resolutionOption.toUpperCase() }, resolutionOption)) }),
+              (0, Q.jsx)(`select`, { value: providerId || activeProvider?.id || ``, onChange: (event) => (setProviderId(event.target.value), setSettingsTouched(!0)), "aria-label": `图片 Provider`, children: imageProviders.map((provider) => (0, Q.jsx)(`option`, { value: provider.id, children: provider.name || provider.id }, provider.id)) }),
+              (0, Q.jsx)(`select`, { value: activeModel, onChange: (event) => (setModel(event.target.value), setSettingsTouched(!0)), "aria-label": `图片模型`, children: availableModels.map((modelName) => (0, Q.jsx)(`option`, { value: modelName, children: modelName }, modelName)) }),
+              (0, Q.jsx)(`select`, { value: count, onChange: (event) => (setCount(Number(event.target.value)), setSettingsTouched(!0)), "aria-label": `图片数量`, children: [1, 2, 3, 4].map((amount) => (0, Q.jsx)(`option`, { value: amount, children: `${amount} 张` }, amount)) }),
+              (0, Q.jsx)(`select`, { value: ratio, onChange: (event) => (setRatio(event.target.value), setSettingsTouched(!0)), "aria-label": `图片比例`, children: quickImageRatios_.map((preset) => (0, Q.jsx)(`option`, { value: preset.id, children: preset.id }, preset.id)) }),
+              (0, Q.jsx)(`select`, { value: resolution, onChange: (event) => (setResolution(event.target.value), setSettingsTouched(!0)), "aria-label": `图片分辨率`, children: [`1k`, `2k`, `4k`].map((resolutionOption) => (0, Q.jsx)(`option`, { value: resolutionOption, children: resolutionOption.toUpperCase() }, resolutionOption)) }),
             ],
           }),
         ],
@@ -52973,6 +53016,7 @@ function Rk({
     assistantFitRef = (0, v.useRef)(null),
     assistantSourceRef = (0, v.useRef)(null),
     assistantResultRef = (0, v.useRef)(null),
+    assistantProfessionalPlaceholderRef = (0, v.useRef)(null),
     j = (0, v.useCallback)(
       (t, n = {}) => {
         if (!t) return;
@@ -60372,6 +60416,107 @@ function Rk({
         (assistantSourceRef.current = null),
         (assistantFitRef.current = t ? [t] : null));
     }, [O, T]),
+    quickAssistantOpenProfessional = (0, v.useCallback)((t = {}) => {
+      let e = assistantResultRef.current,
+        n = !1;
+      e && !Y.current.some((t) => t.id === e) && (e = null);
+      e ||
+        (e = [...Y.current]
+          .reverse()
+          .find(
+            (e) =>
+              e.type === `result` &&
+              e.data?.resultType === `generateImage` &&
+              e.data?.imageSource !== `upload`,
+          )?.id);
+      e || ((e = ensureAssistantResult(t.ratio || `3:4`)), (n = !0));
+      if (!e) return;
+      let r = rt.current[e],
+        i = Y.current.find((e) => e.id === r)?.data || {},
+        a = {
+          ...i,
+          ...(t.prompt
+            ? { promptDraft: t.prompt, image_prompt: t.prompt }
+            : {}),
+          image_model: t.model || i.image_model || ``,
+          image_api_id: t.apiId || i.image_api_id || ``,
+          image_size: t.ratio || i.image_size || `3:4`,
+          image_resolution: t.resolution || i.image_resolution || `1k`,
+          image_count: t.count || i.image_count || 1,
+          ...(t.asset?.url
+            ? {
+                connectedImages: [t.asset.url],
+                uploadedReferenceImages: [t.asset.url],
+              }
+            : {}),
+        };
+      (n &&
+          (assistantProfessionalPlaceholderRef.current = {
+            id: e,
+            initialConfig: assistantProfessionalConfigSnapshot_(a),
+            preserveOnClose: !!t.settingsTouched,
+          }),
+        T((n) => {
+          let i = n.map((n) =>
+            n.id === e
+              ? {
+                  ...n,
+                  selected: !0,
+                  data: {
+                    ...n.data,
+                    ...(t.prompt
+                      ? { promptDraft: t.prompt, image_prompt: t.prompt }
+                      : {}),
+                    imageSize: t.ratio || n.data?.imageSize || `3:4`,
+                  },
+                }
+              : n.id === r
+                ? {
+                    ...n,
+                    selected: !1,
+                    data: a,
+                  }
+                : { ...n, selected: !1 },
+          );
+          return ((Y.current = i), i);
+        }),
+        Vt(e));
+    }, [ensureAssistantResult, T, Vt]),
+    quickAssistantCloseProfessional = (0, v.useCallback)(() => {
+      let a = assistantProfessionalPlaceholderRef.current,
+        e = a?.id || null,
+        t = e ? rt.current[e] : null,
+        r = e ? Y.current.find((t) => t.id === e) : null,
+        i = t ? Y.current.find((e) => e.id === t) : null,
+        o = !!a?.initialConfig &&
+          a.initialConfig !== assistantProfessionalConfigSnapshot_(i?.data || {}),
+        n = !!e &&
+          !a?.preserveOnClose &&
+          !o &&
+          !(
+            r?.data?.imageUrl ||
+            r?.data?.imageUrls?.length ||
+            r?.data?.imageHistory?.length ||
+            i?.data?.promptDraft?.trim() ||
+            i?.data?.image_prompt?.trim()
+          );
+      T((r) => {
+        let i = r
+          .filter((r) => !n || (r.id !== e && r.id !== t))
+          .map((e) => (e.selected ? { ...e, selected: !1 } : e));
+        return ((Y.current = i), i);
+      });
+      (n &&
+        (O((n) => n.filter((n) => n.source !== e && n.target !== e)),
+        delete rt.current[e],
+        assistantResultRef.current === e && (assistantResultRef.current = null)),
+        (assistantProfessionalPlaceholderRef.current = null),
+        V(null),
+        Vt(null),
+        window.requestAnimationFrame(() =>
+          document.querySelector(`.canvas-image-assistant-professional`)?.focus(),
+        ));
+    }, [O, T, V, Vt]),
     quickAssistantGenerate = (0, v.useCallback)(
       async ({ asset: e, prompt: t, apiId: n, model: r, ratio: i, resolution: a, count: o }) => {
         let s = null,
@@ -61426,6 +61571,7 @@ function Rk({
                 promptStyles: p,
                 hidden: B?.type === `composer`,
                 onExpand: () => V({ type: `composer`, id: Zr.resultId }),
+                onClose: quickAssistantCloseProfessional,
               }),
             Qr &&
               (0, Q.jsx)(jk, {
@@ -61475,13 +61621,17 @@ function Rk({
               splitterNode: ei,
               promptStyles: p,
               overlayBoundaryRef: le,
-              onClose: () => V(null),
+              onClose: () =>
+                B?.type === `composer`
+                  ? quickAssistantCloseProfessional()
+                  : V(null),
             }),
             (0, Q.jsx)(CanvasImageAssistant_, {
               providers: y.providers,
               onAssetReady: quickAssistantAssetReady,
               onAssetClear: quickAssistantAssetClear,
               onGenerate: quickAssistantGenerate,
+              onProfessionalMode: quickAssistantOpenProfessional,
               hidden: assistantAdvancedMode,
             }),
           ],

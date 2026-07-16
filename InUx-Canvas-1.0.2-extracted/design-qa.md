@@ -36,6 +36,7 @@
 - Passed: clicking or dragging a reference image into the optional upload zone updates the source node, infers its aspect ratio, and switches generation to the reference-guided path.
 - Passed: removing the optional reference clears its source node, edge, and generator inputs so the next run returns to text-to-image.
 - Passed: the beginner assistant and the advanced node composer are mutually exclusive; selecting a generated node switches to the advanced controls.
+- Passed: the assistant exposes a dedicated professional-mode button, and the advanced composer has an explicit close action that restores the assistant without losing its draft.
 - Passed: generation reports completion only after the provider task returns an image; unsupported capabilities surface as an error instead of a false success.
 - Passed: the assistant becomes a bottom sheet below 980 px and does not cause horizontal overflow.
 
