@@ -61961,7 +61961,14 @@ var quickCreateModes_ = Object.freeze([
   { id: `mask`, label: `Mask 重绘`, icon: `brush` },
   { id: `outpaint`, label: `扩图`, icon: `crop` },
   { id: `variation`, label: `生成变体`, icon: `copy` },
-]);
+]),
+  quickImageRatios_ = Object.freeze([
+    { id: `3:4`, value: 3 / 4 },
+    { id: `1:1`, value: 1 },
+    { id: `16:9`, value: 16 / 9 },
+    { id: `9:16`, value: 9 / 16 },
+    { id: `4:3`, value: 4 / 3 },
+  ]);
 async function validateQuickMask_(e, t) {
   if (!e || e.type !== `image/png`)
     throw Error(`Mask 必须使用带透明区域的 PNG 图片`);
@@ -61985,6 +61992,18 @@ async function validateQuickMask_(e, t) {
     if (!a) throw Error(`Mask PNG 必须包含透明区域`);
   } finally {
     (n.close(), r.close());
+  }
+}
+async function inferQuickImageRatio_(e) {
+  let t = await createImageBitmap(e);
+  try {
+    let e = t.width / t.height,
+      n = quickImageRatios_;
+    return n.reduce((t, n) =>
+      Math.abs(n.value - e) < Math.abs(t.value - e) ? n : t,
+    ).id;
+  } finally {
+    t.close();
   }
 }
 function QuickCreatePanel_({
@@ -62029,8 +62048,13 @@ function QuickCreatePanel_({
         quickPreviewCleanupRef.current.forEach((e) => URL.revokeObjectURL(e)),
       [],
     ));
-  let z = (0, v.useCallback)((e) => {
+  let z = (0, v.useCallback)(async (e) => {
       let t = Array.from(e.target.files || []).filter(d_).slice(0, 10);
+      e.target.value = ``;
+      if (t.length === 0) {
+        (T(`error`), D(f_()));
+        return;
+      }
       (f((e) => {
         let n = Math.max(0, 10 - e.length);
         return [
@@ -62041,10 +62065,15 @@ function QuickCreatePanel_({
           })),
         ];
       }),
-        (e.target.value = ``),
         D(``),
         T(`idle`));
-    }, []),
+      if (r === `image` && d.length === 0) {
+        a === `generate` && o(`reference`);
+        try {
+          g(await inferQuickImageRatio_(t[0]));
+        } catch {}
+      }
+    }, [r, a, d.length]),
     B = (0, v.useCallback)((e) => {
       let t = Array.from(e.target.files || []).find((e) => e.type === `image/png`);
       e.target.value = ``;
@@ -62062,9 +62091,11 @@ function QuickCreatePanel_({
     V = (0, v.useCallback)((e) => {
       f((t) => {
         let n = t[e];
-        return (n?.preview && URL.revokeObjectURL(n.preview), t.filter((t, n) => n !== e));
+        n?.preview && URL.revokeObjectURL(n.preview);
+        let r = t.filter((t, n) => n !== e);
+        return (r.length === 0 && a === `reference` && o(`generate`), r);
       });
-    }, []),
+    }, [a]),
     H = (0, v.useCallback)((e) => {
       (c(e.prompt || ``), g(`3:4`), D(`模板 Prompt 已生成，可继续补充后直接创作`), T(`success`));
     }, []),
@@ -62185,7 +62216,12 @@ function QuickCreatePanel_({
             className: `quick-create-prompt`,
             value: s,
             onChange: (e) => (c(e.target.value), T(`idle`), D(``)),
-            placeholder: r === `video` ? `描述你要生成的视频、镜头运动和氛围` : `描述你要生成的画面`,
+            placeholder:
+              r === `video`
+                ? `简单描述你想要的视频，例如：镜头缓慢推近香港夜景`
+                : d.length > 0
+                  ? `只写你想改成什么，例如：保持风格，把标题改成“香港本科申请”`
+                  : `简单描述你想要的图片`,
             rows: 4,
             onKeyDown: (e) => {
               (e.metaKey || e.ctrlKey) && e.key === `Enter` && (e.preventDefault(), U());
@@ -62198,37 +62234,71 @@ function QuickCreatePanel_({
               onUpload: () => M.current?.click(),
               onApply: H,
             }),
-          r === `image` &&
-            (0, Q.jsx)(`details`, {
-              className: `quick-create-advanced`,
-              children: (0, Q.jsxs)(Q.Fragment, {
+          (0, Q.jsxs)(`div`, {
+            className: `quick-create-simple-actions`,
+            children: [
+              (0, Q.jsxs)(`button`, {
+                className: `quick-create-simple-upload`,
+                onClick: () => M.current?.click(),
                 children: [
-                  (0, Q.jsx)(`summary`, { children: `高级控制与反向提示词` }),
-                  (0, Q.jsx)(`textarea`, { value: l, onChange: (e) => u(e.target.value), placeholder: `可选：不希望画面中出现的内容`, rows: 2 }),
+                  (0, Q.jsx)($, { name: `image`, size: 17 }),
+                  d.length > 0 ? `继续添加参考图` : `上传参考图（可选）`,
                 ],
               }),
-            }),
-          (0, Q.jsxs)(`div`, {
-            className: `quick-create-controls`,
-            children: [
-              d.length === 0 && (0, Q.jsx)(`button`, { className: `quick-create-upload-shortcut`, onClick: () => M.current?.click(), children: `+ 参考图` }),
-              (0, Q.jsx)(`select`, { value: O || F?.id || ``, onChange: (e) => k(e.target.value), "aria-label": `AI Provider`, children: P.length ? P.map((e) => (0, Q.jsx)(`option`, { value: e.id, children: e.name || e.id }, e.id)) : (0, Q.jsx)(`option`, { value: ``, children: `未配置 AI` }) }),
-              (0, Q.jsx)(`select`, { value: L, onChange: (e) => j(e.target.value), "aria-label": `生成模型`, children: I.map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
-              r === `image` && (0, Q.jsx)(`select`, { value: b, onChange: (e) => x(Number(e.target.value)), "aria-label": `生成数量`, children: [1, 2, 3, 4].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 张` }, e)) }),
-              (0, Q.jsx)(`select`, { value: h, onChange: (e) => g(e.target.value), "aria-label": `画面比例`, children: (r === `video` ? [`16:9`, `9:16`, `1:1`] : [`3:4`, `1:1`, `16:9`, `9:16`, `4:3`]).map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
-              (0, Q.jsx)(`select`, { value: _, onChange: (e) => y(e.target.value), "aria-label": `分辨率`, children: (r === `video` ? [`720p`, `1080p`] : [`1k`, `2k`, `4k`]).map((e) => (0, Q.jsx)(`option`, { value: e, children: e.toUpperCase() }, e)) }),
-              r === `video` && (0, Q.jsx)(`select`, { value: S, onChange: (e) => C(e.target.value), "aria-label": `视频时长`, children: [`5`, `8`, `10`, `15`].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 秒` }, e)) }),
+              (0, Q.jsxs)(`span`, {
+                className: `quick-create-simple-hint`,
+                children: [
+                  (0, Q.jsx)(`i`, {}),
+                  r === `video`
+                    ? `自动生成视频`
+                    : d.length > 0
+                      ? `已自动识别：参考图生成 · ${h}`
+                      : `直接文字生成 · ${h}`,
+                ],
+              }),
               (0, Q.jsx)(`button`, { className: `quick-create-submit`, onClick: U, disabled: w === `loading`, title: `开始创作（⌘ Enter）`, "aria-label": `开始创作`, children: w === `loading` ? (0, Q.jsx)($, { name: `loader`, size: 20 }) : (0, Q.jsx)(`span`, { className: `quick-create-submit-arrow`, children: `↑` }) }),
             ],
           }),
           E && (0, Q.jsx)(`p`, { className: `quick-create-message ${w}`, role: w === `error` ? `alert` : `status`, children: E }),
+          (0, Q.jsxs)(`details`, {
+            className: `quick-create-more-settings`,
+            children: [
+              (0, Q.jsxs)(`summary`, {
+                children: [
+                  (0, Q.jsx)(`span`, { children: `更多设置` }),
+                  (0, Q.jsx)(`small`, { children: `${L || `未配置模型`} · ${b} 张 · ${h} · ${_.toUpperCase()}` }),
+                ],
+              }),
+              r === `image` && (0, Q.jsx)(`div`, {
+                className: `quick-create-modes`,
+                children: quickCreateModes_.map((e) => (0, Q.jsxs)(`button`, { className: `quick-create-mode ${a === e.id ? `active` : ``}`, onClick: () => (o(e.id), D(``), T(`idle`)), children: [(0, Q.jsx)($, { name: e.icon, size: 16 }), e.label] }, e.id)),
+              }),
+              r === `image` &&
+                (0, Q.jsx)(`details`, {
+                  className: `quick-create-advanced`,
+                  children: (0, Q.jsxs)(Q.Fragment, {
+                    children: [
+                      (0, Q.jsx)(`summary`, { children: `反向提示词` }),
+                      (0, Q.jsx)(`textarea`, { value: l, onChange: (e) => u(e.target.value), placeholder: `可选：不希望画面中出现的内容`, rows: 2 }),
+                    ],
+                  }),
+                }),
+              (0, Q.jsxs)(`div`, {
+                className: `quick-create-controls`,
+                children: [
+                  (0, Q.jsx)(`select`, { value: O || F?.id || ``, onChange: (e) => k(e.target.value), "aria-label": `AI Provider`, children: P.length ? P.map((e) => (0, Q.jsx)(`option`, { value: e.id, children: e.name || e.id }, e.id)) : (0, Q.jsx)(`option`, { value: ``, children: `未配置 AI` }) }),
+                  (0, Q.jsx)(`select`, { value: L, onChange: (e) => j(e.target.value), "aria-label": `生成模型`, children: I.map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
+                  r === `image` && (0, Q.jsx)(`select`, { value: b, onChange: (e) => x(Number(e.target.value)), "aria-label": `生成数量`, children: [1, 2, 3, 4].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 张` }, e)) }),
+                  (0, Q.jsx)(`select`, { value: h, onChange: (e) => g(e.target.value), "aria-label": `画面比例`, children: (r === `video` ? [`16:9`, `9:16`, `1:1`] : quickImageRatios_.map((e) => e.id)).map((e) => (0, Q.jsx)(`option`, { value: e, children: e }, e)) }),
+                  (0, Q.jsx)(`select`, { value: _, onChange: (e) => y(e.target.value), "aria-label": `分辨率`, children: (r === `video` ? [`720p`, `1080p`] : [`1k`, `2k`, `4k`]).map((e) => (0, Q.jsx)(`option`, { value: e, children: e.toUpperCase() }, e)) }),
+                  r === `video` && (0, Q.jsx)(`select`, { value: S, onChange: (e) => C(e.target.value), "aria-label": `视频时长`, children: [`5`, `8`, `10`, `15`].map((e) => (0, Q.jsx)(`option`, { value: e, children: `${e} 秒` }, e)) }),
+                ],
+              }),
+            ],
+          }),
           (0, Q.jsx)(`input`, { ref: M, type: `file`, accept: l_, multiple: !0, hidden: !0, onChange: z }),
           (0, Q.jsx)(`input`, { ref: N, type: `file`, accept: `image/png`, hidden: !0, onChange: B }),
         ],
-      }),
-      r === `image` && (0, Q.jsx)(`div`, {
-        className: `quick-create-modes`,
-        children: quickCreateModes_.map((e) => (0, Q.jsxs)(`button`, { className: `quick-create-mode ${a === e.id ? `active` : ``}`, onClick: () => (o(e.id), D(``), T(`idle`)), children: [(0, Q.jsx)($, { name: e.icon, size: 16 }), e.label] }, e.id)),
       }),
     ],
   });

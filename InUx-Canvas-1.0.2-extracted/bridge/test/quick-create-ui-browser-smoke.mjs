@@ -53,12 +53,18 @@ try {
   const initial = JSON.parse(
     await evaluate(`JSON.stringify({
       visible: Boolean(document.querySelector('.quick-create-panel')),
+      simpleActions: Boolean(document.querySelector('.quick-create-simple-actions')),
+      simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
+      moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
       tabs: [...document.querySelectorAll('.quick-create-type-tab')].map((element) => element.innerText),
-      modes: [...document.querySelectorAll('.quick-create-mode')].map((element) => element.innerText),
+      modes: [...document.querySelectorAll('.quick-create-mode')].map((element) => element.textContent.trim()),
       promptPlaceholder: document.querySelector('.quick-create-prompt')?.placeholder || ''
     })`),
   );
   assert.equal(initial.visible, true);
+  assert.equal(initial.simpleActions, true);
+  assert.match(initial.simpleHint, /直接文字生成/);
+  assert.equal(initial.moreSettingsOpen, false);
   assert.deepEqual(initial.tabs, ["图片", "视频"]);
   assert.deepEqual(initial.modes, [
     "直接生成",
@@ -69,7 +75,61 @@ try {
     "扩图",
     "生成变体",
   ]);
-  assert.match(initial.promptPlaceholder, /描述你要生成的画面/);
+  assert.match(initial.promptPlaceholder, /简单描述你想要的图片/);
+
+  await evaluate(`(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 9;
+    canvas.height = 16;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const file = new File([blob], 'reference.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const input = document.querySelector('input[type="file"][multiple]');
+    Object.defineProperty(input, 'files', { value: transfer.files, configurable: true });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await wait(300);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-simple-hint')?.innerText || ''`),
+    /参考图生成 · 9:16/,
+  );
+  await evaluate(`document.querySelector('.quick-create-asset button')?.click()`);
+  await wait(100);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-simple-hint')?.innerText || ''`),
+    /直接文字生成/,
+  );
+
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 375,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await wait(100);
+  assert.equal(
+    await evaluate(`(() => {
+      const panel = document.querySelector('.quick-create-panel')?.getBoundingClientRect();
+      return Boolean(panel && panel.left >= 0 && panel.right <= 375 && document.documentElement.scrollWidth <= 375);
+    })()`),
+    true,
+    "simple creator should fit a 375px viewport without horizontal overflow",
+  );
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await wait(100);
+
+  await evaluate(`document.querySelector('.quick-create-more-settings > summary')?.click()`);
+  await wait(50);
+  assert.equal(
+    await evaluate(`document.querySelector('.quick-create-more-settings')?.open || false`),
+    true,
+  );
 
   await evaluate(
     `[...document.querySelectorAll('.quick-create-mode')].find((button) => button.innerText === '商业海报')?.click()`,
