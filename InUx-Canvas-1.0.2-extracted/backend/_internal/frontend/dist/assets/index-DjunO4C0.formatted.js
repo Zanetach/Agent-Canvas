@@ -60283,6 +60283,10 @@ function Rk({
   );
   (0, v.useEffect)(() => {
     if (assistantInitializedRef.current) return;
+    if (_?.current) {
+      assistantInitializedRef.current = !0;
+      return;
+    }
     if (w.some((e) => e.type !== `generator`)) {
       assistantInitializedRef.current = !0;
       return;
@@ -60290,7 +60294,7 @@ function Rk({
     assistantInitializedRef.current = !0;
     let { sourceId: e, resultId: t } = ensureAssistantPair();
     assistantFitRef.current = [e, t].filter(Boolean);
-  }, [ensureAssistantPair, w]);
+  }, [ensureAssistantPair, w, _]);
   let quickAssistantAssetReady = (0, v.useCallback)(
       (e, t) => {
         let { sourceId: n, resultId: r } = ensureAssistantPair(e, t);

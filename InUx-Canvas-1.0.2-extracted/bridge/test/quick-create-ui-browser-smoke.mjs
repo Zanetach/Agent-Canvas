@@ -198,6 +198,11 @@ try {
   }
   assert.equal(canvasReady, true, "quick create did not open a Canvas project");
   assert.equal(
+    await evaluate(`document.querySelectorAll('.result-node').length`),
+    1,
+    "homepage quick create should not add the blank assistant node pair",
+  );
+  assert.equal(
     await evaluate(`Boolean(document.querySelector('.canvas-image-assistant'))`),
     true,
     "canvas image assistant should be visible",
