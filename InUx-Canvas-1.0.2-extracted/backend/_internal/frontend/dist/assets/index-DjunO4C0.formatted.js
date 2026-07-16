@@ -52738,7 +52738,7 @@ function assistantSourceNode_(node, asset, ratio) {
     },
   };
 }
-function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
+function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, hidden = !1 }) {
   let [asset, setAsset] = (0, v.useState)(null),
     [prompt, setPrompt] = (0, v.useState)(``),
     [status, setStatus] = (0, v.useState)(`idle`),
@@ -52753,7 +52753,7 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
     activeProvider = imageProviders.find((provider) => provider.id === providerId) || imageProviders[0] || null,
     availableModels = activeProvider?.models || [],
     activeModel = availableModels.includes(model) ? model : activeProvider?.defaultModel || availableModels[0] || ``,
-    currentStep = !asset ? 1 : !prompt.trim() ? 2 : 3;
+    currentStep = !prompt.trim() ? 1 : 3;
   ((0, v.useEffect)(() => {
     activeProvider?.id && activeProvider.id !== providerId && setProviderId(activeProvider.id);
   }, [activeProvider?.id, providerId]),
@@ -52785,13 +52785,12 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
     handleDrop = (event) => {
       (event.preventDefault(), uploadAsset(Array.from(event.dataTransfer?.files || []).find(d_)));
     },
+    handleClearAsset = () => {
+      (setAsset(null), setStatus(`idle`), setMessage(``), onAssetClear?.());
+    },
     handleGenerate = async () => {
-      if (!asset) {
-        (setStatus(`error`), setMessage(`请先上传参考图`));
-        return;
-      }
       if (!prompt.trim()) {
-        (setStatus(`error`), setMessage(`请描述你想怎么修改`));
+        (setStatus(`error`), setMessage(`请先描述想生成的图片`));
         return;
       }
       if (!activeProvider?.id || !activeModel) {
@@ -52818,6 +52817,8 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
   return (0, Q.jsxs)(`aside`, {
     className: `canvas-image-assistant nodrag nopan`,
     "aria-label": `图片创作助手`,
+    "aria-hidden": hidden ? `true` : void 0,
+    hidden,
     children: [
       (0, Q.jsxs)(`header`, {
         className: `canvas-image-assistant-header`,
@@ -52837,10 +52838,36 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
             className: `canvas-image-assistant-step-heading`,
             children: [
               (0, Q.jsx)(`span`, { children: `1` }),
-              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `上传参考图` }),
+              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `描述想生成的图片` }),
             ],
           }),
-          (0, Q.jsx)(`p`, { children: `上传一张参考图，作为生成的基础` }),
+          (0, Q.jsx)(`p`, { children: `用一句话描述主体、场景、风格或用途` }),
+          (0, Q.jsx)(`textarea`, {
+            className: `canvas-image-assistant-prompt`,
+            value: prompt,
+            onChange: (event) => (setPrompt(event.target.value), setStatus(`idle`), setMessage(``)),
+            placeholder: `例如：生成一张深蓝金色的中文招生海报…`,
+            rows: 4,
+          }),
+          (0, Q.jsx)(`div`, {
+            className: `canvas-image-assistant-examples`,
+            children: promptExamples.map((example) =>
+              (0, Q.jsx)(`button`, { type: `button`, onClick: () => setPrompt(example), children: example }, example),
+            ),
+          }),
+        ],
+      }),
+      (0, Q.jsxs)(`section`, {
+        className: `canvas-image-assistant-step canvas-image-assistant-optional ${asset ? `complete` : ``}`,
+        children: [
+          (0, Q.jsxs)(`div`, {
+            className: `canvas-image-assistant-step-heading`,
+            children: [
+              (0, Q.jsx)(`span`, { children: `2` }),
+              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `添加参考图（可选）` }),
+            ],
+          }),
+          (0, Q.jsx)(`p`, { children: `需要保持风格或构图时再上传，不上传也能生成` }),
           (0, Q.jsxs)(`button`, {
             type: `button`,
             className: `canvas-image-assistant-upload ${asset ? `has-image` : ``}`,
@@ -52859,33 +52886,14 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onGenerate }) {
                   (0, Q.jsx)(`small`, { key: `help`, children: `支持 JPG、PNG、WebP，最大 50MB` }),
                 ],
           }),
+          asset &&
+            (0, Q.jsx)(`button`, {
+              type: `button`,
+              className: `canvas-image-assistant-clear-reference`,
+              onClick: handleClearAsset,
+              children: `移除参考图，改用文字生成`,
+            }),
           (0, Q.jsx)(`input`, { ref: fileInputRef, type: `file`, accept: l_, hidden: !0, onChange: handleFileChange }),
-        ],
-      }),
-      (0, Q.jsxs)(`section`, {
-        className: `canvas-image-assistant-step ${currentStep === 2 ? `active` : currentStep > 2 ? `complete` : ``}`,
-        children: [
-          (0, Q.jsxs)(`div`, {
-            className: `canvas-image-assistant-step-heading`,
-            children: [
-              (0, Q.jsx)(`span`, { children: `2` }),
-              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `告诉我想怎么改` }),
-            ],
-          }),
-          (0, Q.jsx)(`p`, { children: `描述你的需求，AI 将根据参考图进行创作` }),
-          (0, Q.jsx)(`textarea`, {
-            className: `canvas-image-assistant-prompt`,
-            value: prompt,
-            onChange: (event) => (setPrompt(event.target.value), setStatus(`idle`), setMessage(``)),
-            placeholder: `例如：更换文字内容，保持整体风格和排版…`,
-            rows: 4,
-          }),
-          (0, Q.jsx)(`div`, {
-            className: `canvas-image-assistant-examples`,
-            children: promptExamples.map((example) =>
-              (0, Q.jsx)(`button`, { type: `button`, onClick: () => setPrompt(example), children: example }, example),
-            ),
-          }),
         ],
       }),
       (0, Q.jsxs)(`section`, {
@@ -52965,7 +52973,6 @@ function Rk({
     assistantFitRef = (0, v.useRef)(null),
     assistantSourceRef = (0, v.useRef)(null),
     assistantResultRef = (0, v.useRef)(null),
-    assistantInitializedRef = (0, v.useRef)(!1),
     j = (0, v.useCallback)(
       (t, n = {}) => {
         if (!t) return;
@@ -60277,24 +60284,43 @@ function Rk({
           connectedImages: e?.url ? [e.url] : [],
         })),
         (assistantResultRef.current = r));
+      n &&
+        r &&
+        O((e) =>
+          e.some((e) => e.source === n && e.target === r)
+            ? e
+            : [
+                ...e,
+                {
+                  id: `e_${n}_${r}`,
+                  source: n,
+                  target: r,
+                  style: { stroke: `var(--edge-stroke)`, strokeWidth: 2 },
+                  animated: !1,
+                },
+              ],
+        );
       return { sourceId: n, resultId: r };
     },
-    [Or],
-  );
-  (0, v.useEffect)(() => {
-    if (assistantInitializedRef.current) return;
-    if (_?.current) {
-      assistantInitializedRef.current = !0;
-      return;
-    }
-    if (w.some((e) => e.type !== `generator`)) {
-      assistantInitializedRef.current = !0;
-      return;
-    }
-    assistantInitializedRef.current = !0;
-    let { sourceId: e, resultId: t } = ensureAssistantPair();
-    assistantFitRef.current = [e, t].filter(Boolean);
-  }, [ensureAssistantPair, w, _]);
+    [O, Or],
+  ),
+    ensureAssistantResult = (0, v.useCallback)(
+      (e = `3:4`) => {
+        let t = assistantResultRef.current;
+        t && !Y.current.some((e) => e.id === t) && (t = null);
+        t ||
+          ((t = Or(`generateImage`, { x: 420, y: 220 }, null, {
+            label: `生成图片`,
+            imageSize: e,
+            selected: !1,
+            activate: !1,
+            suppressImagePrompt: !0,
+          })),
+          (assistantResultRef.current = t));
+        return t;
+      },
+      [Or],
+    );
   let quickAssistantAssetReady = (0, v.useCallback)(
       (e, t) => {
         let { sourceId: n, resultId: r } = ensureAssistantPair(e, t);
@@ -60319,14 +60345,46 @@ function Rk({
       },
       [ensureAssistantPair, T],
     ),
+    quickAssistantAssetClear = (0, v.useCallback)(() => {
+      let e = assistantSourceRef.current,
+        t = assistantResultRef.current,
+        n = e ? rt.current[e] : null,
+        r = t ? rt.current[t] : null;
+      T((i) => {
+        let a = i
+          .filter((t) => t.id !== e && t.id !== n)
+          .map((e) =>
+            e.id === r
+              ? {
+                  ...e,
+                  data: {
+                    ...e.data,
+                    connectedImages: [],
+                    uploadedReferenceImages: [],
+                  },
+                }
+              : e,
+          );
+        return ((Y.current = a), a);
+      });
+      (O((t) => t.filter((t) => t.source !== e && t.target !== e)),
+        e && delete rt.current[e],
+        (assistantSourceRef.current = null),
+        (assistantFitRef.current = t ? [t] : null));
+    }, [O, T]),
     quickAssistantGenerate = (0, v.useCallback)(
       async ({ asset: e, prompt: t, apiId: n, model: r, ratio: i, resolution: a, count: o }) => {
-        let { sourceId: s, resultId: c } = ensureAssistantPair(e, i);
+        let s = null,
+          c = null;
+        if (e?.url) {
+          let l = ensureAssistantPair(e, i);
+          ((s = l.sourceId), (c = l.resultId));
+        } else c = ensureAssistantResult(i);
         if (!c) throw Error(`无法创建图片生成节点`);
         let l = rt.current[c];
         T((u) => {
           let d = u.map((u) =>
-            u.id === s
+            s && e && u.id === s
               ? assistantSourceNode_(u, e, i)
               : u.id === c
                 ? {
@@ -60352,8 +60410,8 @@ function Rk({
                         image_resolution: a,
                         image_count: o,
                         image_operation: `generate`,
-                        connectedImages: [e.url],
-                        uploadedReferenceImages: [e.url],
+                        connectedImages: e?.url ? [e.url] : [],
+                        uploadedReferenceImages: e?.url ? [e.url] : [],
                       },
                     }
                   : u,
@@ -60366,7 +60424,7 @@ function Rk({
         if (!u?.ok) throw Error(u?.reason || `图片生成未能启动`);
         return c;
       },
-      [ensureAssistantPair, Sr, T],
+      [ensureAssistantPair, ensureAssistantResult, Sr, T],
     );
   (0, v.useEffect)(() => {
     let e = quickAutoRunRef.current;
@@ -60397,7 +60455,7 @@ function Rk({
         e.type === `generateVideo` ? `generateVideo` : `generateImage`,
         { x: 240, y: 240 },
         null,
-        cD(e),
+        { ...cD(e), selected: !1, activate: !1 },
       );
       e.autoRun && t && (quickAutoRunRef.current = t);
     }
@@ -61204,7 +61262,8 @@ function Rk({
         x: Math.max(8, Math.min(M.x, window.innerWidth - 184 * e - 8)),
         y: Math.max(8, Math.min(M.y, window.innerHeight - t - 8)),
       };
-    }, [M]);
+    }, [M]),
+    assistantAdvancedMode = !!Zr || !!Qr || !!$r || !!ei || !!B;
   return (
     (0, v.useEffect)(() => {
       let e = ce.current;
@@ -61234,7 +61293,7 @@ function Rk({
       children: [
         (0, Q.jsxs)(`div`, {
           ref: ce,
-          className: `canvas-flow-shell with-image-assistant${H ? ` space-panning` : ``}`,
+          className: `canvas-flow-shell${assistantAdvancedMode ? `` : ` with-image-assistant`}${H ? ` space-panning` : ``}`,
           onPointerDownCapture: tn,
           onClickCapture: nn,
           children: [
@@ -61421,7 +61480,9 @@ function Rk({
             (0, Q.jsx)(CanvasImageAssistant_, {
               providers: y.providers,
               onAssetReady: quickAssistantAssetReady,
+              onAssetClear: quickAssistantAssetClear,
               onGenerate: quickAssistantGenerate,
+              hidden: assistantAdvancedMode,
             }),
           ],
         }),

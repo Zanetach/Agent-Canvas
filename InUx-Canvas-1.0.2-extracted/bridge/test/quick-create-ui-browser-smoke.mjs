@@ -211,7 +211,12 @@ try {
     JSON.parse(
       await evaluate(`JSON.stringify([...document.querySelectorAll('.canvas-image-assistant-step-title')].map((node) => node.textContent.trim()))`),
     ),
-    ["上传参考图", "告诉我想怎么改", "开始生成"],
+    ["描述想生成的图片", "添加参考图（可选）", "开始生成"],
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock'))`),
+    false,
+    "advanced node composer should stay hidden while the beginner assistant is active",
   );
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
@@ -226,6 +231,31 @@ try {
   }
   assert.equal(generated, true, "quick create did not automatically run image generation");
   assert.match(await evaluate(`document.querySelector('.canvas-title-input')?.value || ''`), /科技蓝机械蜜蜂/);
+
+  const imageCountBeforeTextOnly = await evaluate(
+    `document.querySelectorAll('.result-image-node img').length`,
+  );
+  await evaluate(`(() => {
+    const field = document.querySelector('.canvas-image-assistant-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '一只蓝色机械蜜蜂飞过未来城市');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
+    "图片创作 · 第 3/3 步",
+  );
+  await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
+  let textOnlyGenerated = false;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await wait(100);
+    textOnlyGenerated =
+      (await evaluate(`document.querySelectorAll('.result-image-node img').length`)) >=
+      imageCountBeforeTextOnly + 1;
+    if (textOnlyGenerated) break;
+  }
+  assert.equal(textOnlyGenerated, true, "assistant should generate without a reference image");
 
   const imageCountBeforeAssistant = await evaluate(
     `document.querySelectorAll('.result-image-node img').length`,
@@ -272,6 +302,54 @@ try {
     if (assistantGenerated) break;
   }
   assert.equal(assistantGenerated, true, "assistant did not generate from the uploaded reference image");
+
+  const visibleResultCountBeforeClear = await evaluate(`document.querySelectorAll('.result-node').length`);
+  await evaluate(`document.querySelector('.canvas-image-assistant-clear-reference')?.click()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-upload.has-image'))`),
+    false,
+    "removing the optional reference should restore the text-to-image upload state",
+  );
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.result-node').length`),
+    visibleResultCountBeforeClear - 1,
+    "removing the optional reference should remove its Canvas source node",
+  );
+
+  await evaluate(`(() => {
+    const result = [...document.querySelectorAll('.result-node')]
+      .find((node) => node.textContent.includes('生成图片'))
+      ?.closest('.react-flow__node');
+    result?.click();
+  })()`);
+  let advancedModeReady = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait(100);
+    advancedModeReady = await evaluate(
+      `Boolean(document.querySelector('.canvas-composer-dock')) && Boolean(document.querySelector('.canvas-image-assistant')?.hidden)`,
+    );
+    if (advancedModeReady) break;
+  }
+  assert.equal(advancedModeReady, true, "selecting a result should switch from the beginner assistant to the advanced composer");
+
+  const panePoint = JSON.parse(
+    await evaluate(`(() => {
+      const rect = document.querySelector('.react-flow__pane')?.getBoundingClientRect();
+      return JSON.stringify({ x: rect ? rect.left + 24 : 24, y: rect ? rect.bottom - 24 : 824 });
+    })()`),
+  );
+  await command("Input.dispatchMouseEvent", { type: "mousePressed", x: panePoint.x, y: panePoint.y, button: "left", clickCount: 1 });
+  await command("Input.dispatchMouseEvent", { type: "mouseReleased", x: panePoint.x, y: panePoint.y, button: "left", clickCount: 1 });
+  let beginnerModeRestored = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait(100);
+    beginnerModeRestored = await evaluate(
+      `!document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`,
+    );
+    if (beginnerModeRestored) break;
+  }
+  assert.equal(beginnerModeRestored, true, "deselecting a result should restore the beginner assistant");
 } finally {
   socket.close();
 }
