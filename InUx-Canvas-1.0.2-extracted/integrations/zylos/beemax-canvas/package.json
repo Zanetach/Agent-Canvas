@@ -1,0 +1,22 @@
+{
+  "name": "zylos-beemax-canvas",
+  "version": "0.1.0",
+  "description": "BeeMax Canvas capability component for Zylos agents",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "zylos",
+    "beemax",
+    "canvas",
+    "image-generation",
+    "agent"
+  ],
+  "license": "MIT",
+  "dependencies": {}
+}

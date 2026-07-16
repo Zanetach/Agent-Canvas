@@ -1,10 +1,13 @@
 import { createServer } from "node:http";
-import { copyFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
+
+import { compositePngWithAlphaMask, decodePng } from "./png-mask.mjs";
 
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
@@ -94,6 +97,12 @@ function extensionFor(contentType) {
   if (contentType === "image/jpeg") return ".jpg";
   if (contentType === "image/webp") return ".webp";
   return ".png";
+}
+
+function pngDataUrlBytes(value, label) {
+  const match = String(value || "").match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error(`${label} 必须是 PNG`);
+  return Buffer.from(match[1], "base64");
 }
 
 async function createThumbnail(source, target) {
@@ -225,35 +234,13 @@ function persistedImageReference(reference) {
   };
 }
 
-function pngInfo(reference) {
-  const match = String(reference?.url || "").match(
-    /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/,
-  );
-  if (!match) return null;
-  const bytes = Buffer.from(match[1], "base64");
-  const signature = bytes.subarray(0, 8).toString("hex");
-  if (
-    signature !== "89504e470d0a1a0a" ||
-    bytes.length < 33 ||
-    bytes.subarray(12, 16).toString("ascii") !== "IHDR"
-  ) {
-    throw new Error("Mask 或源图片不是有效的 PNG");
-  }
-  return {
-    width: bytes.readUInt32BE(16),
-    height: bytes.readUInt32BE(20),
-    colorType: bytes[25],
-  };
-}
-
 function validateMaskPayload(payload) {
   if (payload.operation !== "mask") return;
   const maskUrl = String(payload.mask_image?.url || "");
   if (maskUrl.startsWith("data:image/") && !maskUrl.startsWith("data:image/png;")) {
     throw new Error("Mask 必须是带 alpha 通道的 PNG");
   }
-  const mask = pngInfo(payload.mask_image);
-  if (!mask) return;
+  const mask = decodePng(pngDataUrlBytes(maskUrl, "Mask"));
   if (![4, 6].includes(mask.colorType)) {
     throw new Error("Mask PNG 必须包含 alpha 通道");
   }
@@ -261,8 +248,8 @@ function validateMaskPayload(payload) {
   if (sourceUrl.startsWith("data:image/") && !sourceUrl.startsWith("data:image/png;")) {
     throw new Error("Mask 与源图片必须使用相同的 PNG 格式");
   }
-  const source = pngInfo(payload.input_images[0]);
-  if (source && (source.width !== mask.width || source.height !== mask.height)) {
+  const source = decodePng(pngDataUrlBytes(sourceUrl, "Mask 源图片"));
+  if (source.width !== mask.width || source.height !== mask.height) {
     throw new Error("Mask 与源图片的尺寸必须一致");
   }
 }
@@ -647,13 +634,55 @@ export function createBridgeServer({
     for (const reference of payload.input_images) {
       inputImages.push(await materializeImageReference(reference, signal, budget));
     }
-    return {
+    const materialized = {
       ...payload,
       input_images: inputImages,
       mask_image: payload.mask_image
         ? await materializeImageReference(payload.mask_image, signal, budget)
         : null,
     };
+    if (materialized.operation !== "mask") return materialized;
+    return {
+      ...materialized,
+      input_images: [
+        await normalizeMaskPngReference(materialized.input_images[0], "Mask 源图片"),
+        ...materialized.input_images.slice(1),
+      ],
+      mask_image: await normalizeMaskPngReference(materialized.mask_image, "Mask"),
+    };
+  }
+
+  async function normalizeMaskPngReference(reference, label) {
+    const url = String(reference?.url || "");
+    if (!url.startsWith("data:image/png;base64,")) return reference;
+    const bytes = pngDataUrlBytes(url, label);
+    const normalizedBytes = await normalizeMaskPngBytes(bytes, label);
+    if (normalizedBytes.equals(bytes)) return reference;
+    return {
+      ...reference,
+      url: `data:image/png;base64,${normalizedBytes.toString("base64")}`,
+    };
+  }
+
+  async function normalizeMaskPngBytes(bytes, label) {
+    try {
+      decodePng(bytes);
+      return bytes;
+    } catch {
+      const directory = await mkdtemp(path.join(tmpdir(), "beemax-mask-png-"));
+      const source = path.join(directory, "source.png");
+      const normalized = path.join(directory, "normalized.png");
+      try {
+        await writeFile(source, bytes);
+        const converted = await runSips(["-s", "format", "png", source, "--out", normalized]);
+        if (!converted.ok) throw new Error(`${label} 无法规范化为 8-bit PNG`);
+        const normalizedBytes = await readFile(normalized);
+        decodePng(normalizedBytes);
+        return normalizedBytes;
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
   }
 
   function launchTask(task, payload) {
@@ -681,10 +710,22 @@ export function createBridgeServer({
   }
 
   async function saveResult(task, payload, provider, generated, itemIndex, itemCount) {
-    const bytes = Buffer.isBuffer(generated.bytes)
+    let bytes = Buffer.isBuffer(generated.bytes)
       ? generated.bytes
       : Buffer.from(generated.bytes);
-    const contentType = generated.contentType || "image/png";
+    let contentType = generated.contentType || "image/png";
+    if (payload.operation === "mask") {
+      if (contentType !== "image/png") {
+        throw new Error("Mask 严格合成要求 Provider 返回 PNG");
+      }
+      bytes = await normalizeMaskPngBytes(bytes, "Provider 生成结果");
+      bytes = compositePngWithAlphaMask({
+        source: pngDataUrlBytes(payload.input_images[0]?.url, "Mask 源图片"),
+        generated: bytes,
+        mask: pngDataUrlBytes(payload.mask_image?.url, "Mask"),
+      });
+      contentType = "image/png";
+    }
     const itemSuffix = itemCount > 1 ? `_${itemIndex + 1}` : "";
     const extension = extensionFor(contentType);
     const filename = `${task.task_id}${itemSuffix}${extension}`;
@@ -783,7 +824,7 @@ export function createBridgeServer({
             if (controller.signal.aborted) return;
             const saved = await saveResult(
               task,
-              payload,
+              providerPayload,
               provider,
               generated,
               itemIndex,
@@ -939,7 +980,10 @@ export function createBridgeServer({
 
       if (request.method === "POST" && url.pathname === "/api/llm") {
         const payload = await readJson(request);
-        if (payload.provider_id !== MANAGED_CODEX_PROVIDER.id) {
+        const routesToManagedProvider =
+          payload.provider_id === MANAGED_CODEX_PROVIDER.id ||
+          (!payload.provider_id && payload.api_protocol === MANAGED_CODEX_PROVIDER.protocol);
+        if (!routesToManagedProvider) {
           await proxyJsonRequest(url.pathname, payload, response);
           return;
         }

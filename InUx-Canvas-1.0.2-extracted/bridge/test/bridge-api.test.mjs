@@ -21,6 +21,22 @@ const RGB_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC";
 const WIDE_ALPHA_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAC0lEQVR4nGNggAIAAAkAAftSuKkAAAAASUVORK5CYII=";
+const MASK_COMPOSITE_SOURCE = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwHwQBEPgD/U6VwW8AAAAASUVORK5CYII=",
+  "base64",
+);
+const MASK_COMPOSITE_GENERATED_16_BIT = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABEAYAAACksqPJAAAAD0lEQVR4nGNgAIL/QACjATPdB/lvQcuBAAAAAElFTkSuQmCC",
+  "base64",
+);
+const MASK_COMPOSITE_MASK = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADElEQVR4nGNggID/AAEIAQBNGY85AAAAAElFTkSuQmCC",
+  "base64",
+);
+const MASK_COMPOSITE_EXPECTED = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAD0lEQVR4nGNgYPj/nwEIAQ76A/2ILbfFAAAAAElFTkSuQmCC",
+  "base64",
+);
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -470,7 +486,7 @@ test("Canvas image assets over fifty megabytes are rejected before download", as
 });
 
 test("mask requests require an alpha PNG matching the source dimensions", async () => {
-  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  const source = RGB_PNG_DATA_URL;
   for (const [mask, expectedError] of [
     [RGB_PNG_DATA_URL, /alpha 通道/],
     [WIDE_ALPHA_PNG_DATA_URL, /尺寸必须一致/],
@@ -512,6 +528,47 @@ test("mask requests require an alpha PNG matching the source dimensions", async 
       await new Promise((resolve) => server.close(resolve));
       await rm(dataDir, { recursive: true, force: true });
     }
+  }
+});
+
+test("mask results preserve every source pixel outside the transparent mask", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-mask-composite-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    publicOrigin: "http://127.0.0.1:9999",
+    providers: [
+      {
+        id: "codex-native",
+        capabilities: { generate: true, mask: true, references: 10 },
+        async generate() {
+          return { bytes: MASK_COMPOSITE_GENERATED_16_BIT, contentType: "image/png" };
+        },
+      },
+    ],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const submitted = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "mask",
+        prompt: "replace only the transparent pixel",
+        input_images: [
+          `data:image/png;base64,${MASK_COMPOSITE_SOURCE.toString("base64")}`,
+        ],
+        mask_image: `data:image/png;base64,${MASK_COMPOSITE_MASK.toString("base64")}`,
+      }),
+    }).then((response) => response.json());
+    const task = await waitForTask(baseUrl, submitted.task_id);
+    const assetPath = new URL(task.server_urls[0]).pathname;
+    const result = Buffer.from(await fetch(`${baseUrl}${assetPath}`).then((response) => response.arrayBuffer()));
+
+    assert.deepEqual(result, MASK_COMPOSITE_EXPECTED);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
   }
 });
 
@@ -557,9 +614,9 @@ test("mask requests accept absolute URLs from the configured Canvas backend", as
   const upstream = createServer((_request, response) => {
     response.writeHead(200, {
       "content-type": "image/png",
-      "content-length": String(PNG_BYTES.length),
+      "content-length": String(MASK_COMPOSITE_MASK.length),
     });
-    response.end(PNG_BYTES);
+    response.end(MASK_COMPOSITE_MASK);
   });
   const upstreamUrl = await listen(upstream);
   let providerCalls = 0;
@@ -572,7 +629,7 @@ test("mask requests accept absolute URLs from the configured Canvas backend", as
         capabilities: { generate: true, mask: true, references: 10 },
         async generate() {
           providerCalls += 1;
-          return { bytes: PNG_BYTES, contentType: "image/png" };
+          return { bytes: MASK_COMPOSITE_MASK, contentType: "image/png" };
         },
       },
     ],
@@ -754,7 +811,7 @@ test("Canvas asset URLs are converted to private data URLs before provider dispa
 
 test("legacy Canvas annotation payload is promoted to a native mask operation", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
-  const source = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
+  const source = `data:image/png;base64,${MASK_COMPOSITE_MASK.toString("base64")}`;
   let providerPayload;
   const server = createBridgeServer({
     dataDir,
@@ -764,7 +821,7 @@ test("legacy Canvas annotation payload is promoted to a native mask operation", 
         capabilities: { generate: true, edit: true, mask: true, references: 10 },
         async generate(payload) {
           providerPayload = payload;
-          return { bytes: PNG_BYTES, contentType: "image/png" };
+          return { bytes: MASK_COMPOSITE_MASK, contentType: "image/png" };
         },
       },
     ],
@@ -1416,6 +1473,21 @@ test("managed BeeMax Codex provider exposes and serves text generation", async (
       maxTokens: 256,
       imageUrls: [`data:image/png;base64,${PNG_BYTES.toString("base64")}`],
     });
+
+    const protocolOnlyResponse = await fetch(`${baseUrl}/api/llm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        api_protocol: "beemax",
+        model_name: "glm-test-text",
+        user_prompt: "兼容未携带 provider_id 的智能拆分请求。",
+      }),
+    });
+    const protocolOnlyBody = await protocolOnlyResponse.json();
+
+    assert.equal(protocolOnlyResponse.status, 200);
+    assert.equal(protocolOnlyBody.response, "这是一段由 Codex 生成的文本。");
+    assert.equal(receivedTextPayload.userPrompt, "兼容未携带 provider_id 的智能拆分请求。");
 
     const unsupported = await fetch(`${baseUrl}/api/llm`, {
       method: "POST",
