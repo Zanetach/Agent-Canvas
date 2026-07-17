@@ -17345,6 +17345,41 @@ body {
 }
 
 /* BeeMax commercial poster template form */
+.image-composer-mode-switch {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 10px;
+  padding: 3px;
+}
+.image-composer-mode {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+.image-composer-mode:hover,
+.image-composer-mode:focus-visible {
+  color: var(--fg-primary);
+  outline: none;
+}
+.image-composer-mode.active {
+  background: var(--accent);
+  color: var(--fg-inverse);
+}
+.image-professional-fields {
+  display: grid;
+  gap: 10px;
+}
 .poster-template-panel {
   background: color-mix(in srgb, var(--bg-elevated) 92%, var(--accent) 8%);
   border: 1px solid var(--border-default);

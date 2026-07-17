@@ -28989,7 +28989,7 @@ function PosterTemplatePanel_({
           body: JSON.stringify({ style_id: g, brief: e, content: c }),
         });
         if (!t?.prompt) throw Error(`模板服务未返回 Prompt`);
-        (i?.(t), p(`success`));
+        (await i?.(t), p(`success`));
       } catch (e) {
         (h(e.message || `生成 Prompt 失败`), p(`error`));
       }
@@ -29119,7 +29119,7 @@ function PosterTemplatePanel_({
               f === `loading`
                 ? `正在生成...`
                 : f === `success`
-                  ? `已生成海报提示词`
+                  ? `已提交生成`
                   : `立即生成`,
           }),
         ],
@@ -34745,6 +34745,9 @@ function pb({ id: e, data: t }) {
     [f, p] = (0, v.useState)([]),
     [m, h] = (0, v.useState)(!1),
     [posterRatioLocked, setPosterRatioLocked] = (0, v.useState)(!1),
+    [imageComposerMode, setImageComposerMode] = (0, v.useState)(() =>
+      t?.imageComposerMode === `professional` ? `professional` : `simple`,
+    ),
     [g, _] = (0, v.useState)(t?.text_api_id || t?.activeProviderId || ``),
     [y, b] = (0, v.useState)(t?.image_api_id || t?.activeProviderId || ``),
     [x, S] = (0, v.useState)(t?.video_api_id || t?.activeProviderId || ``),
@@ -34928,6 +34931,18 @@ function pb({ id: e, data: t }) {
         z((e) => ({ ...e, image_prompt: `` })));
   }, [Te, Ee, we, R.image_prompt, D]),
     (0, v.useEffect)(() => {
+      if (
+        D === `generateImage` &&
+        [`simple`, `professional`].includes(t?.imageComposerMode) &&
+        t.imageComposerMode !== imageComposerMode
+      )
+        (setImageComposerMode(t.imageComposerMode),
+          t.imageComposerMode === `professional` &&
+            typeof t?.image_prompt == `string` &&
+            t.image_prompt !== R.image_prompt &&
+            z((e) => ({ ...e, image_prompt: t.image_prompt })));
+    }, [D, t?.imageComposerMode, imageComposerMode]),
+    (0, v.useEffect)(() => {
       fetch(`/api/models`)
         .then((e) => e.json())
         .then((e) => {
@@ -35029,6 +35044,13 @@ function pb({ id: e, data: t }) {
             t.onGeneratorDataChange(e, { image_size: r }));
       },
       [e, ze, t?.onGeneratorDataChange],
+    ),
+    changeImageComposerMode = (0, v.useCallback)(
+      (mode) => {
+        (setImageComposerMode(mode),
+          t?.onGeneratorDataChange?.(e, { imageComposerMode: mode }));
+      },
+      [e, t?.onGeneratorDataChange],
     ),
     Ue = (0, v.useCallback)(
       (n) => {
@@ -35250,19 +35272,29 @@ function pb({ id: e, data: t }) {
       W,
       re,
     ]),
-    tt = (0, v.useCallback)(async () => {
+    tt = (0, v.useCallback)(async (overrides = {}) => {
       if (Fe) {
         (t?.onCancelGeneration?.(e), r(`idle`), qe());
         return;
       }
-      let n = O_(Uy(Oe, Se), R.image_negative_prompt),
-        i = {
+      let imagePrompt = overrides?.image_prompt ?? R.image_prompt,
+        imageSize = overrides?.image_size ?? R.image_size,
+        imageSizePreset =
+          overrides?.image_size_preset ?? R.image_size_preset,
+        combinedPrompt = [Te, imagePrompt]
+          .map((e) => e.trim())
+          .filter(Boolean).join(`
+
+`),
+        finalPrompt = O_(Uy(combinedPrompt, Se), R.image_negative_prompt),
+        generatorData = {
           ...Ye(),
-          image_prompt: R.image_prompt,
+          image_prompt: imagePrompt,
           image_negative_prompt: R.image_negative_prompt,
           image_model: se,
           image_api_id: ie?.id || ``,
-          image_size: R.image_size,
+          image_size: imageSize,
+          image_size_preset: imageSizePreset,
           image_resolution: R.image_resolution,
           image_count: R.image_count,
         };
@@ -35275,19 +35307,20 @@ function pb({ id: e, data: t }) {
             api_protocol: ie?.protocol || `openai`,
             api_base_url: ie?.baseUrl || ``,
             api_key: ie?.apiKey || R.api_key,
-            prompt: n,
+            prompt: finalPrompt,
             model: se,
-            size: R.image_size,
+            size: imageSize,
             resolution: R.image_resolution,
             n: 1,
             image_urls: Se,
             video_urls: be,
           },
-          i,
+          generatorData,
         ));
     }, [
       Ye,
       Oe,
+      Te,
       be,
       t,
       R.api_key,
@@ -36208,62 +36241,111 @@ function pb({ id: e, data: t }) {
             (0, Q.jsxs)(`div`, {
               className: `node-body`,
               children: [
-                ut(),
-                (0, Q.jsx)(PosterTemplatePanel_, {
-                  styles: Be,
-                  referenceCount: Se.length + f.length,
-                  uploadDisabled: Ce === 0 || ze,
-                  onUpload: () => C.current?.click(),
-                  onApply: (n) => {
-                    if (ze) return;
-                    let r = n.aspect_ratio || `3:4`,
-                      i = h_(r);
-                    (z((e) => ({
-                      ...e,
-                      image_prompt: n.prompt,
-                      image_size: r,
-                      image_size_preset: i,
-                    })),
-                      t?.onGeneratorDataChange?.(e, {
-                        image_prompt: n.prompt,
-                        promptDraft: n.prompt,
-                        image_size: r,
-                        image_size_preset: i,
-                      }),
-                      setPosterRatioLocked(!0));
-                  },
-                }),
                 (0, Q.jsxs)(`div`, {
-                  className: `node-field`,
+                  className: `image-composer-mode-switch`,
+                  role: `tablist`,
                   children: [
-                    (0, Q.jsx)(`label`, { children: `正向提示词` }),
-                    (0, Q.jsx)(xy, {
-                      value: R.image_prompt,
-                      onChange: (e) => He(`image_prompt`, e),
-                      referenceImages: Se,
-                      placeholder: `输入图片提示词...`,
-                      rows: 4,
-                      disabled: ze,
+                    (0, Q.jsx)(`button`, {
+                      type: `button`,
+                      role: `tab`,
+                      "aria-selected": imageComposerMode === `simple`,
+                      className: `image-composer-mode ${imageComposerMode === `simple` ? `active` : ``}`,
+                      onClick: () => changeImageComposerMode(`simple`),
+                      children: `简单生成`,
+                    }),
+                    (0, Q.jsx)(`button`, {
+                      type: `button`,
+                      role: `tab`,
+                      "aria-selected": imageComposerMode === `professional`,
+                      className: `image-composer-mode ${imageComposerMode === `professional` ? `active` : ``}`,
+                      onClick: () => changeImageComposerMode(`professional`),
+                      children: `专业模式`,
                     }),
                   ],
                 }),
-                (0, Q.jsxs)(`div`, {
-                  className: `node-field`,
-                  children: [
-                    (0, Q.jsx)(`label`, { children: `负面提示词` }),
-                    (0, Q.jsx)(`textarea`, {
-                      value: R.image_negative_prompt,
-                      onChange: (e) =>
-                        He(`image_negative_prompt`, e.target.value),
-                      placeholder: `输入不希望出现在图片里的内容...`,
-                      rows: 3,
-                      disabled: ze,
+                imageComposerMode === `simple`
+                  ? (0, Q.jsxs)(Q.Fragment, {
+                      children: [
+                        (0, Q.jsx)(`input`, {
+                          ref: C,
+                          type: `file`,
+                          accept: l_,
+                          multiple: !0,
+                          onChange: Ze,
+                          style: { display: `none` },
+                        }),
+                        (0, Q.jsx)(PosterTemplatePanel_, {
+                          styles: Be,
+                          referenceCount: Se.length + f.length,
+                          uploadDisabled: Ce === 0 || ze,
+                          onUpload: () => C.current?.click(),
+                          onApply: async (n) => {
+                            if (ze) return;
+                            let r = n.aspect_ratio || `3:4`,
+                              i = h_(r);
+                            (z((e) => ({
+                              ...e,
+                              image_prompt: n.prompt,
+                              image_size: r,
+                              image_size_preset: i,
+                            })),
+                              t?.onGeneratorDataChange?.(e, {
+                                image_prompt: n.prompt,
+                                promptDraft: n.prompt,
+                                image_size: r,
+                                image_size_preset: i,
+                              }),
+                              setPosterRatioLocked(!0));
+                            await tt({
+                              image_prompt: n.prompt,
+                              image_size: r,
+                              image_size_preset: i,
+                            });
+                          },
+                        }),
+                      ],
+                    })
+                  : (0, Q.jsxs)(Q.Fragment, {
+                      children: [
+                        ut(),
+                        (0, Q.jsxs)(`div`, {
+                          className: `image-professional-fields`,
+                          children: [
+                            (0, Q.jsxs)(`div`, {
+                              className: `node-field`,
+                              children: [
+                                (0, Q.jsx)(`label`, { children: `画面描述` }),
+                                (0, Q.jsx)(xy, {
+                                  value: R.image_prompt,
+                                  onChange: (e) => He(`image_prompt`, e),
+                                  referenceImages: Se,
+                                  placeholder: `描述构图、光线、色彩、主体和细节...`,
+                                  rows: 4,
+                                  disabled: ze,
+                                }),
+                              ],
+                            }),
+                            (0, Q.jsxs)(`div`, {
+                              className: `node-field`,
+                              children: [
+                                (0, Q.jsx)(`label`, { children: `避免出现（可选）` }),
+                                (0, Q.jsx)(`textarea`, {
+                                  value: R.image_negative_prompt,
+                                  onChange: (e) =>
+                                    He(`image_negative_prompt`, e.target.value),
+                                  placeholder: `例如：乱码、水印、低清晰度、拥挤排版`,
+                                  rows: 3,
+                                  disabled: ze,
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                      ],
                     }),
-                  ],
-                }),
               ],
             }),
-            (0, Q.jsxs)(`div`, {
+            imageComposerMode === `professional` && (0, Q.jsxs)(`div`, {
               className: `processor-footer-wrap`,
               ref: w,
               children: [
@@ -36383,7 +36465,7 @@ function pb({ id: e, data: t }) {
                     }),
                     (0, Q.jsx)(`button`, {
                       className: `processor-run-btn ${Fe ? `cancel` : ``}`,
-                      onClick: tt,
+                      onClick: () => tt(),
                       disabled: m || (!Fe && !Oe.trim()),
                       title: Fe ? `放弃本次生成结果` : `生成图片`,
                       children: (0, Q.jsx)($, {
@@ -60463,6 +60545,7 @@ function Rk({
         i = Y.current.find((e) => e.id === r)?.data || {},
         a = {
           ...i,
+          imageComposerMode: `professional`,
           ...(t.prompt
             ? { promptDraft: t.prompt, image_prompt: t.prompt }
             : {}),

@@ -60,6 +60,8 @@ try {
   const initial = await evaluate(`JSON.stringify({
     visible: Boolean(document.querySelector('.poster-template-panel')),
     brief: Boolean(document.querySelector('.poster-template-brief')),
+    simpleMode: document.querySelector('.image-composer-mode.active')?.innerText || '',
+    professionalFields: Boolean(document.querySelector('.image-professional-fields')),
     advancedOpen: document.querySelector('.poster-template-advanced')?.open || false,
     fields: document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea').length,
     styles: [...document.querySelectorAll('.poster-template-style')].map((element) => element.innerText)
@@ -67,6 +69,8 @@ try {
   const initialState = JSON.parse(initial);
   assert.equal(initialState.visible, true);
   assert.equal(initialState.brief, true);
+  assert.equal(initialState.simpleMode, "简单生成");
+  assert.equal(initialState.professionalFields, false);
   assert.equal(initialState.advancedOpen, false);
   assert.equal(initialState.fields, 10);
   assert.deepEqual(initialState.styles, [
@@ -74,6 +78,24 @@ try {
     "象牙白海军蓝法律风",
     "深蓝金色招生紧迫风",
   ]);
+
+  await evaluate(
+    `[...document.querySelectorAll('.image-composer-mode')].find((button) => button.innerText === '专业模式')?.click()`,
+  );
+  await wait(100);
+  const professional = JSON.parse(await evaluate(`JSON.stringify({
+    panel: Boolean(document.querySelector('.poster-template-panel')),
+    fields: Boolean(document.querySelector('.image-professional-fields')),
+    active: document.querySelector('.image-composer-mode.active')?.innerText || ''
+  })`));
+  assert.equal(professional.panel, false);
+  assert.equal(professional.fields, true);
+  assert.equal(professional.active, "专业模式");
+
+  await evaluate(
+    `[...document.querySelectorAll('.image-composer-mode')].find((button) => button.innerText === '简单生成')?.click()`,
+  );
+  await wait(100);
 
   await evaluate(
     `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
@@ -96,16 +118,16 @@ try {
   );
   await wait(500);
 
+  const submittedLabel = await evaluate(
+    `[...document.querySelectorAll('.poster-template-panel button')].find((button) => button.innerText.includes('提交生成'))?.innerText || ''`,
+  );
+
   const applied = await evaluate(`JSON.stringify({
-    prompt: document.querySelector('.image-mention-editor')?.innerText || '',
-    settings: [...document.querySelectorAll('.processor-settings-summary')].map((element) => element.innerText),
-    applyLabel: [...document.querySelectorAll('.poster-template-panel button')].find((button) => button.innerText.includes('海报提示词'))?.innerText || ''
+    nodeStatus: document.querySelector('.image-processor-node')?.className || ''
   })`);
   const appliedState = JSON.parse(applied);
-  assert.match(appliedState.prompt, /【固定风格 STYLE LOCK】/);
-  assert.match(appliedState.prompt, /2026年度增长报告/);
-  assert.ok(appliedState.settings.some((label) => /3:4.*模板锁定/.test(label)));
-  assert.equal(appliedState.applyLabel, "已生成海报提示词");
+  assert.equal(submittedLabel, "已提交生成");
+  assert.match(appliedState.nodeStatus, /running|success/);
 } finally {
   socket.close();
 }
