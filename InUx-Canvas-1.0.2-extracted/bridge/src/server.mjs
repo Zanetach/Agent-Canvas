@@ -433,6 +433,16 @@ export function createBridgeServer({
         responseHeaders[name] = value;
       }
     }
+    const requestPath = new URL(request.url || "/", "http://beemax.local").pathname;
+    const isFrontendResource =
+      ["GET", "HEAD"].includes(request.method || "GET") &&
+      !requestPath.startsWith("/api/") &&
+      !requestPath.startsWith("/uploads/");
+    if (isFrontendResource) {
+      responseHeaders["cache-control"] = "no-store";
+      delete responseHeaders.etag;
+      delete responseHeaders["last-modified"];
+    }
     response.writeHead(upstreamResponse.status, responseHeaders);
     if (!upstreamResponse.body || request.method === "HEAD") {
       response.end();

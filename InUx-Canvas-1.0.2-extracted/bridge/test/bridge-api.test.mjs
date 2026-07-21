@@ -1417,6 +1417,14 @@ test("relay rejects image redirects even when the initial URL is same-origin", a
 test("non-Bridge routes are transparently proxied to the original Canvas backend", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
   const upstream = createServer(async (request, response) => {
+    if (request.url === "/") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "public, max-age=31536000",
+      });
+      response.end("<!doctype html><title>Canvas</title>");
+      return;
+    }
     if (request.url === "/api/health") {
       response.writeHead(200, { "content-type": "application/json", "x-upstream": "yes" });
       response.end(JSON.stringify({ status: "ok" }));
@@ -1459,6 +1467,9 @@ test("non-Bridge routes are transparently proxied to the original Canvas backend
       service: "beemax-bridge",
       providers: ["unused"],
     });
+    const frontendResponse = await fetch(`${baseUrl}/`);
+    assert.equal(frontendResponse.headers.get("cache-control"), "no-store");
+    assert.match(await frontendResponse.text(), /<title>Canvas<\/title>/);
     const capabilities = await fetch(`${baseUrl}/api/beemax/capabilities`).then(
       (response) => response.json(),
     );
