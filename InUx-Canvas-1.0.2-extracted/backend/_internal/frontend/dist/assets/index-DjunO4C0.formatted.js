@@ -62562,7 +62562,7 @@ function fA({
         "data-tooltip": `返回画布`,
         "aria-label": `返回画布`,
         children: (0, Q.jsx)(`img`, {
-          src: `/sidebar-logo.png`,
+          src: `/sidebar-logo.svg`,
           alt: ``,
           "aria-hidden": `true`,
         }),

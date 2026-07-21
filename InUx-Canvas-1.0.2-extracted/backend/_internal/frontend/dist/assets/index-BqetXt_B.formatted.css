@@ -548,10 +548,9 @@ body {
   outline-offset: 3px;
 }
 .sidebar-logo-button img {
-  object-fit: cover;
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
+  object-fit: contain;
+  width: 34px;
+  height: 34px;
   display: block;
 }
 .sidebar-button,
