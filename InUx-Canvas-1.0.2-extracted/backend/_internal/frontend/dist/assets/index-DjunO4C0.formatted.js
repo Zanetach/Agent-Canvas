@@ -63051,18 +63051,6 @@ function pA({
   return (0, Q.jsxs)(`main`, {
     className: `workspace-page`,
     children: [
-      (0, Q.jsxs)(`div`, {
-        className: `page-header quick-create-page-header`,
-        children: [
-          (0, Q.jsx)(`h1`, { children: `画布` }),
-          (0, Q.jsx)(`button`, {
-            className: `icon-button ${m ? `active` : ``}`,
-            title: m ? `退出批量操作` : `批量操作`,
-            onClick: T,
-            children: (0, Q.jsx)($, { name: `batch`, size: 20 }),
-          }),
-        ],
-      }),
       (0, Q.jsx)(QuickCreatePanel_, {
         onCreateProject: t,
         runtimeSettings: quickRuntimeSettings,

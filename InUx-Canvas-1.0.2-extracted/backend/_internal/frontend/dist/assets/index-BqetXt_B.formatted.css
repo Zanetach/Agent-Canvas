@@ -9195,20 +9195,6 @@ body {
   width: 20rem;
   z-index: -1;
 }
-.quick-create-page-header {
-  justify-content: flex-end;
-  margin-bottom: 8px;
-  min-height: 36px;
-}
-.quick-create-page-header h1 {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
 .quick-create-panel {
   margin: 0 auto 48px;
   max-width: 980px;
@@ -9574,9 +9560,6 @@ body {
 @media (width <= 680px) {
   .workspace-page {
     padding: 16px 14px 36px;
-  }
-  .quick-create-page-header {
-    margin: 0;
   }
   .quick-create-panel {
     margin-bottom: 34px;
