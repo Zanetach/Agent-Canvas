@@ -62714,8 +62714,10 @@ var quickCreateModes_ = Object.freeze([
     id: `poster`,
     label: `商业海报`,
     icon: `apps`,
-    group: `create`,
+    group: `template`,
     description: `选择海报风格并填写结构化内容，快速生成中文商业视觉。`,
+    materialDescription: `选择海报风格，填写内容后快速生成`,
+    materialAction: `使用素材 →`,
   },
   {
     id: `reference`,
@@ -62753,10 +62755,11 @@ var quickCreateModes_ = Object.freeze([
     description: `保留主体与风格，生成多个可继续挑选的版本。`,
   },
 ]),
+  quickPosterMaterial_ = quickCreateModes_.find((e) => e.id === `poster`),
   quickCreateModeGroups_ = Object.freeze([
     {
       id: `create`,
-      title: `常用创作`,
+      title: `生成方式`,
       sectionClass: `primary`,
       listClass: `quick-create-primary-modes`,
       iconSize: 17,
@@ -63043,7 +63046,8 @@ function QuickCreatePanel_({
       } catch (e) {
         (T(`error`), D(e.message || `创建任务失败，请稍后重试`));
       }
-    }, [s, r, a, d, p, F, L, e, l, h, _, b, S]);
+    }, [s, r, a, d, p, F, L, e, l, h, _, b, S]),
+    quickSelectMode = (e) => (o(e), D(``), T(`idle`));
   return (0, Q.jsxs)(`section`, {
     className: `quick-create-panel`,
     children: [
@@ -63204,6 +63208,43 @@ function QuickCreatePanel_({
                 (0, Q.jsxs)(`div`, {
                   className: `quick-create-mode-groups`,
                   children: [
+                    (0, Q.jsxs)(`section`, {
+                      className: `quick-create-template-shortcut`,
+                      children: [
+                        (0, Q.jsx)(`span`, {
+                          className: `quick-create-mode-section-title`,
+                          children: `快捷素材`,
+                        }),
+                        (0, Q.jsxs)(`button`, {
+                          type: `button`,
+                          className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
+                          "aria-pressed": a === `poster`,
+                          onClick: () => quickSelectMode(quickPosterMaterial_.id),
+                          children: [
+                            (0, Q.jsx)(`span`, {
+                              className: `quick-create-template-card-icon`,
+                              children: (0, Q.jsx)($, {
+                                name: quickPosterMaterial_.icon,
+                                size: 18,
+                              }),
+                            }),
+                            (0, Q.jsxs)(`div`, {
+                              children: [
+                                (0, Q.jsx)(`strong`, {
+                                  children: quickPosterMaterial_.label,
+                                }),
+                                (0, Q.jsx)(`span`, {
+                                  children: quickPosterMaterial_.materialDescription,
+                                }),
+                              ],
+                            }),
+                            (0, Q.jsx)(`em`, {
+                              children: quickPosterMaterial_.materialAction,
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
                     quickCreateModeGroups_.map((e) =>
                       (0, Q.jsxs)(
                         `section`,
@@ -63225,7 +63266,7 @@ function QuickCreatePanel_({
                                       type: `button`,
                                       className: `quick-create-mode ${e.compact ? `compact` : ``} ${a === t.id ? `active` : ``}`,
                                       "aria-pressed": a === t.id,
-                                      onClick: () => (o(t.id), D(``), T(`idle`)),
+                                      onClick: () => quickSelectMode(t.id),
                                       children: [
                                         (0, Q.jsx)($, {
                                           name: t.icon,

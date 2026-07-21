@@ -9579,6 +9579,58 @@ body {
   display: grid;
   gap: 8px;
 }
+.quick-create-template-shortcut {
+  display: grid;
+  gap: 8px;
+}
+.quick-create-template-card {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-default));
+  border-radius: 12px;
+  color: var(--fg-primary);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 11px;
+  grid-template-columns: auto 1fr auto;
+  min-height: 58px;
+  padding: 9px 12px;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.quick-create-template-card:hover,
+.quick-create-template-card.active {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-default));
+}
+.quick-create-template-card-icon {
+  align-items: center;
+  background: var(--accent-soft);
+  border-radius: 9px;
+  color: var(--accent);
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+.quick-create-template-card > div {
+  display: grid;
+  gap: 3px;
+}
+.quick-create-template-card strong {
+  font-size: 13px;
+}
+.quick-create-template-card > div > span {
+  color: var(--fg-secondary);
+  font-size: 11px;
+}
+.quick-create-template-card em {
+  color: var(--accent);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
 .quick-create-mode-section-title {
   color: var(--fg-tertiary);
   font-size: 11px;
@@ -9591,7 +9643,7 @@ body {
   margin: 0;
 }
 .quick-create-primary-modes {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .quick-create-edit-modes {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -9786,8 +9838,11 @@ body {
   .quick-create-primary-modes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .quick-create-primary-modes .quick-create-mode:first-child {
-    grid-column: 1 / -1;
+  .quick-create-template-card {
+    grid-template-columns: auto 1fr;
+  }
+  .quick-create-template-card em {
+    grid-column: 2;
   }
   .quick-create-edit-modes {
     grid-template-columns: repeat(2, minmax(0, 1fr));

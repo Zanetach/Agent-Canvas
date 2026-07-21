@@ -70,7 +70,6 @@ try {
   assert.equal(initial.exampleCount, 3);
   assert.deepEqual(initial.modes, [
     "直接生成",
-    "商业海报",
     "参考图生成",
     "图片编辑",
     "局部重绘",
@@ -147,7 +146,11 @@ try {
     JSON.parse(
       await evaluate(`JSON.stringify([...document.querySelectorAll('.quick-create-mode-section-title')].map((node) => node.textContent.trim()))`),
     ),
-    ["常用创作", "图片处理"],
+    ["快捷素材", "生成方式", "图片处理"],
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-template-card')?.innerText || ''`),
+    /商业海报/,
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-mode-guide')?.innerText || ''`),
@@ -161,7 +164,7 @@ try {
   );
 
   await evaluate(
-    `[...document.querySelectorAll('.quick-create-mode')].find((button) => button.innerText === '商业海报')?.click()`,
+    `document.querySelector('.quick-create-template-card')?.click()`,
   );
   await wait(100);
   assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-panel .poster-template-panel'))`), true);
