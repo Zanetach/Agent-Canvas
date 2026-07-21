@@ -9412,11 +9412,17 @@ body {
   color: var(--accent);
 }
 .quick-create-controls {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(170px, 1.5fr) minmax(150px, 1.35fr) repeat(3, minmax(86px, 0.7fr));
+}
+.quick-create-controls label {
+  color: var(--fg-tertiary);
+  display: grid;
+  font-size: 11px;
+  font-weight: 650;
+  gap: 6px;
+  min-width: 0;
 }
 .quick-create-controls select,
 .quick-create-upload-shortcut {
@@ -9429,6 +9435,10 @@ body {
   font-weight: 650;
   min-height: 38px;
   padding: 0 10px;
+}
+.quick-create-controls select {
+  min-width: 0;
+  width: 100%;
 }
 .quick-create-upload-shortcut:hover,
 .quick-create-controls select:hover {
@@ -9560,27 +9570,108 @@ body {
 .quick-create-message.success {
   color: var(--success, #16a34a);
 }
+.quick-create-mode-groups {
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+}
+.quick-create-mode-section {
+  display: grid;
+  gap: 8px;
+}
+.quick-create-mode-section-title {
+  color: var(--fg-tertiary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
 .quick-create-modes {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  margin-top: 14px;
+  margin: 0;
+}
+.quick-create-primary-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.quick-create-edit-modes {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .quick-create-mode {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 999px;
-  font-size: 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
   justify-content: center;
-  min-height: 42px;
-  padding: 0 8px;
+  min-height: 46px;
+  padding: 0 12px;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.quick-create-mode.compact {
+  border-radius: 10px;
+  color: var(--fg-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  min-height: 38px;
 }
 .quick-create-mode:hover,
 .quick-create-mode.active {
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border-default));
   color: var(--accent);
+}
+.quick-create-mode-guide {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border-default));
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 1fr;
+  padding: 11px 12px;
+}
+.quick-create-mode-guide-icon {
+  align-items: center;
+  background: var(--accent-soft);
+  border-radius: 9px;
+  color: var(--accent);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+.quick-create-mode-guide > div {
+  display: grid;
+  gap: 2px;
+}
+.quick-create-mode-guide strong {
+  color: var(--fg-primary);
+  font-size: 12px;
+}
+.quick-create-mode-guide > div > span {
+  color: var(--fg-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.quick-create-parameter-section {
+  border-top: 1px solid var(--border-default);
+  display: grid;
+  gap: 11px;
+  margin-top: 14px;
+  padding: 13px 4px 2px;
+}
+.quick-create-parameter-heading {
+  align-items: baseline;
+  display: flex;
+  gap: 9px;
+}
+.quick-create-parameter-heading strong {
+  color: var(--fg-primary);
+  font-size: 12px;
+}
+.quick-create-parameter-heading span {
+  color: var(--fg-tertiary);
+  font-size: 11px;
 }
 .quick-create-advanced {
   border-top: 1px solid var(--border-default);
@@ -9628,8 +9719,8 @@ body {
   .workspace-page {
     padding: 28px 32px;
   }
-  .quick-create-modes {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .quick-create-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (width <= 680px) {
@@ -9660,9 +9751,8 @@ body {
     min-height: 112px;
     padding-inline: 3px;
   }
-  .quick-create-controls select {
-    flex: 1 1 calc(50% - 8px);
-    min-width: 0;
+  .quick-create-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quick-create-simple-actions {
     align-items: stretch;
@@ -9693,16 +9783,23 @@ body {
     bottom: 13px;
     margin-left: auto;
   }
-  .quick-create-modes {
-    display: flex;
-    margin-inline: -4px;
-    overflow-x: auto;
-    padding: 0 14px 5px;
-    scrollbar-width: none;
+  .quick-create-primary-modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .quick-create-primary-modes .quick-create-mode:first-child {
+    grid-column: 1 / -1;
+  }
+  .quick-create-edit-modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quick-create-mode {
-    flex: 0 0 auto;
-    padding-inline: 14px;
+    justify-content: flex-start;
+    padding-inline: 13px;
+  }
+  .quick-create-parameter-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
   .quick-create-composer .poster-template-panel {
     max-height: none;

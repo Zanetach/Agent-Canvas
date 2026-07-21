@@ -73,7 +73,7 @@ try {
     "商业海报",
     "参考图生成",
     "图片编辑",
-    "Mask 重绘",
+    "局部重绘",
     "扩图",
     "生成变体",
   ]);
@@ -142,6 +142,22 @@ try {
   assert.equal(
     await evaluate(`document.querySelector('.quick-create-more-settings')?.open || false`),
     true,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await evaluate(`JSON.stringify([...document.querySelectorAll('.quick-create-mode-section-title')].map((node) => node.textContent.trim()))`),
+    ),
+    ["常用创作", "图片处理"],
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-mode-guide')?.innerText || ''`),
+    /当前模式：直接生成/,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await evaluate(`JSON.stringify([...document.querySelectorAll('.quick-create-controls > label > span')].map((node) => node.textContent.trim()))`),
+    ),
+    ["AI 服务", "生成模型", "生成数量", "画面比例", "分辨率"],
   );
 
   await evaluate(
