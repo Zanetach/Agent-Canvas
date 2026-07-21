@@ -45840,6 +45840,7 @@ function DT({ data: e, onAppend: t, onOverwrite: n, onCancel: r }) {
     }),
   });
 }
+var managedProviderId_ = `beemax-codex-agent`;
 function OT({
   runtimeSettings: e,
   loadState: t = { status: `idle`, error: `` },
@@ -45902,10 +45903,10 @@ function OT({
       },
       [a, n],
     ),
-    _ = (0, v.useCallback)(() => {
-      let e = ST({
+    _ = (0, v.useCallback)((e = `未命名 AI 配置`) => {
+      let t = ST({
         id: xT(`provider`),
-        name: `未命名 AI 配置`,
+        name: e,
         protocol: `openai`,
         textApiMode: `auto`,
         enabled: !0,
@@ -45913,11 +45914,11 @@ function OT({
       (o(
         CT({
           ...a,
-          activeProviderId: a.activeProviderId || e.id,
-          providers: [...a.providers, e],
+          activeProviderId: a.activeProviderId || t.id,
+          providers: [...a.providers, t],
         }),
       ),
-        i(e.id),
+        i(t.id),
         c({ type: ``, message: `` }));
     }, [a]),
     y = (0, v.useCallback)(async () => {
@@ -46046,7 +46047,7 @@ function OT({
                   (0, Q.jsx)(`button`, {
                     className: `small-action-btn`,
                     type: `button`,
-                    onClick: _,
+                    onClick: () => _(),
                     children: `新增`,
                   }),
                 ],
@@ -46086,6 +46087,11 @@ function OT({
                           (0, Q.jsxs)(`small`, {
                             className: `api-list-meta`,
                             children: [
+                              e.id === managedProviderId_ &&
+                                (0, Q.jsx)(`span`, {
+                                  className: `api-managed-label`,
+                                  children: `系统托管 · `,
+                                }),
                               (0, Q.jsx)(`span`, {
                                 className: `api-list-state ${e.enabled === !1 ? `disabled` : `enabled`}`,
                                 children:
@@ -46124,9 +46130,41 @@ function OT({
                         }),
                       ],
                     }),
-                    (0, Q.jsxs)(`div`, {
-                      className: `api-form`,
-                      children: [
+                    p.id === managedProviderId_
+                      ? (0, Q.jsxs)(`div`, {
+                          className: `managed-provider-panel`,
+                          children: [
+                            (0, Q.jsx)(`span`, {
+                              className: `managed-provider-icon`,
+                              children: (0, Q.jsx)($, { name: `sparkles`, size: 22 }),
+                            }),
+                            (0, Q.jsxs)(`div`, {
+                              children: [
+                                (0, Q.jsx)(`strong`, { children: `由 BeeMax 自动管理` }),
+                                (0, Q.jsx)(`p`, {
+                                  children: `文本与图片模型已经可以直接使用，无需填写 Base URL 或 API Key。`,
+                                }),
+                                (0, Q.jsxs)(`div`, {
+                                  className: `managed-provider-capabilities`,
+                                  children: [
+                                    (0, Q.jsx)(`span`, { children: `✓ 文本创作` }),
+                                    (0, Q.jsx)(`span`, { children: `✓ 图片生成` }),
+                                    (0, Q.jsx)(`span`, { className: `pending`, children: `视频需单独配置` }),
+                                  ],
+                                }),
+                              ],
+                            }),
+                            (0, Q.jsx)(`button`, {
+                              type: `button`,
+                              className: `api-save-btn`,
+                              onClick: () => _(`视频生成服务`),
+                              children: `新增视频配置`,
+                            }),
+                          ],
+                        })
+                      : (0, Q.jsxs)(`div`, {
+                          className: `api-form`,
+                          children: [
                         (0, Q.jsxs)(`div`, {
                           className: `api-form-grid two-col`,
                           children: [
@@ -46343,8 +46381,8 @@ function OT({
                             }),
                           ],
                         }),
-                      ],
-                    }),
+                          ],
+                        }),
                   ],
                 })
               : (0, Q.jsx)(`div`, {
@@ -50226,6 +50264,7 @@ function aD({
   onDeleteTemplate: c,
   onUseMaterial: l,
   onUseTemplate: u,
+  onUseStarterTemplate: useStarterTemplate,
 }) {
   let [d, f] = (0, v.useState)(e === `templates` ? `templates` : `images`),
     p = d === `templates`,
@@ -50382,7 +50421,7 @@ function aD({
         children: tD.map((e) => {
           let t =
             e.id === `templates`
-              ? o.length
+              ? o.length + quickCreateStarterTemplates_.length
               : e.id === `characters`
                 ? B.length
                 : z.length;
@@ -50850,20 +50889,59 @@ function aD({
                     })),
               p &&
                 (U.length === 0
-                  ? (0, Q.jsxs)(`div`, {
-                      className: `materials-empty`,
-                      children: [
-                        (0, Q.jsx)($, { name: `apps`, size: 42 }),
-                        (0, Q.jsx)(`p`, {
-                          children: y.trim()
-                            ? `没有匹配的模板`
-                            : `还没有收藏的模板`,
-                        }),
-                        (0, Q.jsx)(`span`, {
-                          children: `在画布中组合节点后，可以将组合收藏为模板`,
-                        }),
-                      ],
-                    })
+                  ? y.trim()
+                    ? (0, Q.jsxs)(`div`, {
+                        className: `materials-empty`,
+                        children: [
+                          (0, Q.jsx)($, { name: `apps`, size: 42 }),
+                          (0, Q.jsx)(`p`, { children: `没有匹配的模板` }),
+                          (0, Q.jsx)(`span`, { children: `换个关键词试试看` }),
+                        ],
+                      })
+                    : (0, Q.jsxs)(`section`, {
+                        className: `starter-template-section`,
+                        children: [
+                          (0, Q.jsxs)(`div`, {
+                            className: `starter-template-heading`,
+                            children: [
+                              (0, Q.jsx)(`div`, {
+                                children: [
+                                  (0, Q.jsx)(`h2`, { children: `从一个常用模板开始` }),
+                                  (0, Q.jsx)(`p`, { children: `选一个模板，回到首页后补充你的具体内容即可。` }),
+                                ],
+                              }),
+                              (0, Q.jsx)(`span`, { children: `新手推荐` }),
+                            ],
+                          }),
+                          (0, Q.jsx)(`div`, {
+                            className: `starter-template-grid`,
+                            children: quickCreateStarterTemplates_.map((e) =>
+                              (0, Q.jsxs)(
+                                `button`,
+                                {
+                                  type: `button`,
+                                  className: `starter-template-card`,
+                                  onClick: () => useStarterTemplate?.(e),
+                                  children: [
+                                    (0, Q.jsx)(`span`, {
+                                      className: `starter-template-icon`,
+                                      children: (0, Q.jsx)($, { name: e.icon, size: 22 }),
+                                    }),
+                                    (0, Q.jsx)(`strong`, { children: e.name }),
+                                    (0, Q.jsx)(`span`, { children: e.description }),
+                                    (0, Q.jsx)(`em`, { children: `使用模板 →` }),
+                                  ],
+                                },
+                                e.id,
+                              ),
+                            ),
+                          }),
+                          (0, Q.jsx)(`p`, {
+                            className: `starter-template-footnote`,
+                            children: `之后也可以在画布中收藏自己的工作流模板。`,
+                          }),
+                        ],
+                      })
                   : (0, Q.jsx)(`div`, {
                       className: `materials-grid materials-template-grid`,
                       children: U.map((e) => {
@@ -52874,7 +52952,7 @@ function assistantProfessionalConfigSnapshot_(data = {}) {
     uploadedReferenceImages: data.uploadedReferenceImages || [],
   });
 }
-function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, onProfessionalMode, hidden = !1 }) {
+function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, onProfessionalMode, hasResult = !1, hidden = !1 }) {
   let [asset, setAsset] = (0, v.useState)(null),
     [prompt, setPrompt] = (0, v.useState)(``),
     [status, setStatus] = (0, v.useState)(`idle`),
@@ -52962,10 +53040,14 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
         children: [
           (0, Q.jsx)(`span`, {
             className: `canvas-image-assistant-progress`,
-            children: `图片创作 · 第 ${currentStep}/3 步`,
+            children: hasResult ? `图片创作 · 已有结果` : `图片创作 · 第 ${currentStep}/3 步`,
           }),
-          (0, Q.jsx)(`h2`, { children: `创建你的图片` }),
-          (0, Q.jsx)(`p`, { children: `跟随 3 个简单步骤，轻松生成你想要的图片` }),
+          (0, Q.jsx)(`h2`, { children: hasResult ? `继续创作` : `创建你的图片` }),
+          (0, Q.jsx)(`p`, {
+            children: hasResult
+              ? `基于现有结果继续修改、生成变体，或描述一个全新的画面`
+              : `跟随 3 个简单步骤，轻松生成你想要的图片`,
+          }),
           (0, Q.jsxs)(`button`, {
             type: `button`,
             className: `canvas-image-assistant-professional`,
@@ -61739,6 +61821,11 @@ function Rk({
             }),
             (0, Q.jsx)(CanvasImageAssistant_, {
               providers: y.providers,
+              hasResult: w.some(
+                (e) =>
+                  e.type === `result` &&
+                  (e.data?.imageUrl || e.data?.imageUrls?.length),
+              ),
               onAssetReady: quickAssistantAssetReady,
               onAssetClear: quickAssistantAssetClear,
               onGenerate: quickAssistantGenerate,
@@ -62559,8 +62646,8 @@ function fA({
       (0, Q.jsx)(`button`, {
         className: `sidebar-logo-button`,
         onClick: () => t(`projects`),
-        "data-tooltip": `返回画布`,
-        "aria-label": `返回画布`,
+        "data-tooltip": `返回项目首页`,
+        "aria-label": `返回项目首页`,
         children: (0, Q.jsx)(`img`, {
           src: `/sidebar-logo.svg`,
           alt: ``,
@@ -62573,8 +62660,8 @@ function fA({
           (0, Q.jsx)(`button`, {
             className: `sidebar-button ${e === `projects` ? `active` : ``}`,
             onClick: () => t(`projects`),
-            "data-tooltip": `画布`,
-            "aria-label": `画布`,
+            "data-tooltip": `项目首页`,
+            "aria-label": `项目首页`,
             children: (0, Q.jsx)($, { name: `compass`, size: 19 }),
           }),
           (0, Q.jsx)(`button`, {
@@ -62630,7 +62717,77 @@ var quickCreateModes_ = Object.freeze([
     { id: `16:9`, value: 16 / 9 },
     { id: `9:16`, value: 9 / 16 },
     { id: `4:3`, value: 4 / 3 },
-  ]);
+  ]),
+  quickCreateExamples_ = Object.freeze({
+    image: [
+      `一张极简蓝色科技产品海报，中文标题清晰，3:4`,
+      `阳光下的现代咖啡馆，温暖电影感，生活方式摄影`,
+      `未来城市夜景，霓虹灯与雨后倒影，超广角`,
+    ],
+    video: [
+      `镜头缓慢推近香港夜景，霓虹倒影，电影感`,
+      `一杯咖啡从咖啡豆到拉花的 8 秒产品短片`,
+      `清晨山间云海延时摄影，镜头平稳上升`,
+    ],
+  }),
+  quickCreateStarterTemplates_ = Object.freeze([
+    {
+      id: `starter-product-poster`,
+      name: `中文商业海报`,
+      description: `适合活动宣传、新品发布和中文品牌传播`,
+      icon: `image`,
+      type: `image`,
+      prompt: `一张高级简洁的产品发布海报，主体居中，品牌留白充足，中文标题清晰，3:4`,
+    },
+    {
+      id: `starter-social-cover`,
+      name: `社交媒体封面`,
+      description: `快速生成醒目的小红书或公众号封面`,
+      icon: `apps`,
+      type: `image`,
+      prompt: `一张明亮有层次的中文社媒封面，醒目大标题，现代编辑设计，3:4`,
+    },
+    {
+      id: `starter-scene-concept`,
+      name: `商品主图`,
+      description: `快速生成干净聚焦的电商商品展示图`,
+      icon: `image`,
+      type: `image`,
+      prompt: `一张干净高级的商品主图，产品居中，柔和棚拍光，背景简洁，细节清晰，1:1`,
+    },
+    {
+      id: `starter-video-shot`,
+      name: `短视频镜头`,
+      description: `先写好镜头，再连接视频生成服务`,
+      icon: `video`,
+      type: `video`,
+      prompt: `镜头缓慢推近夜晚城市天台上的人物，霓虹灯倒影，电影感，8 秒`,
+    },
+  ]),
+  quickCreateDraftKey_ = `beemax.quick-create-draft`;
+function normalizeQuickCreateDraft_(e = {}) {
+  return {
+    type: e.type === `video` ? `video` : `image`,
+    prompt: typeof e.prompt == `string` ? e.prompt : ``,
+  };
+}
+function readQuickCreateDraft_() {
+  try {
+    return normalizeQuickCreateDraft_(
+      JSON.parse(window.sessionStorage.getItem(quickCreateDraftKey_) || `{}`),
+    );
+  } catch {
+    return normalizeQuickCreateDraft_();
+  }
+}
+function writeQuickCreateDraft_(e) {
+  try {
+    window.sessionStorage.setItem(
+      quickCreateDraftKey_,
+      JSON.stringify(normalizeQuickCreateDraft_(e)),
+    );
+  } catch {}
+}
 async function validateQuickMask_(e, t) {
   if (!e || e.type !== `image/png`)
     throw Error(`Mask 必须使用带透明区域的 PNG 图片`);
@@ -62670,17 +62827,19 @@ async function inferQuickImageRatio_(e) {
 }
 function QuickCreatePanel_({
   onCreateProject: e,
+  onOpenSettings: quickOpenSettings,
   runtimeSettings: t,
   promptStyles: n = [],
 }) {
-  let [r, i] = (0, v.useState)(`image`),
+  let quickDraft = (0, v.useMemo)(readQuickCreateDraft_, []),
+    [r, i] = (0, v.useState)(quickDraft.type === `video` ? `video` : `image`),
     [a, o] = (0, v.useState)(`generate`),
-    [s, c] = (0, v.useState)(``),
+    [s, c] = (0, v.useState)(quickDraft.prompt || ``),
     [l, u] = (0, v.useState)(``),
     [d, f] = (0, v.useState)([]),
     [p, m] = (0, v.useState)(null),
-    [h, g] = (0, v.useState)(`3:4`),
-    [_, y] = (0, v.useState)(`1k`),
+    [h, g] = (0, v.useState)(quickDraft.type === `video` ? `16:9` : `3:4`),
+    [_, y] = (0, v.useState)(quickDraft.type === `video` ? `720p` : `1k`),
     [b, x] = (0, v.useState)(1),
     [S, C] = (0, v.useState)(`8`),
     [w, T] = (0, v.useState)(`idle`),
@@ -62697,7 +62856,8 @@ function QuickCreatePanel_({
     F = P.find((e) => e.id === O) || P[0] || null,
     I = F?.models || [],
     L = I.includes(A) ? A : F?.defaultModel || I[0] || ``,
-    R = d.map((e) => e.preview);
+    R = d.map((e) => e.preview),
+    quickCapabilityBlocked = !F?.id || !L;
   quickPreviewCleanupRef.current = [...R, p?.preview].filter(Boolean);
   ((0, v.useEffect)(() => {
     F?.id && F.id !== O && k(F.id);
@@ -62705,6 +62865,9 @@ function QuickCreatePanel_({
     (0, v.useEffect)(() => {
       L && L !== A && j(L);
     }, [L, A]),
+    (0, v.useEffect)(() => {
+      writeQuickCreateDraft_({ type: r, prompt: s });
+    }, [r, s]),
     (0, v.useEffect)(
       () => () =>
         quickPreviewCleanupRef.current.forEach((e) => URL.revokeObjectURL(e)),
@@ -62815,6 +62978,7 @@ function QuickCreatePanel_({
           videoDuration: S,
           videoResolution: _,
         });
+        writeQuickCreateDraft_();
       } catch (e) {
         (T(`error`), D(e.message || `创建任务失败，请稍后重试`));
       }
@@ -62886,9 +63050,53 @@ function QuickCreatePanel_({
                   : `简单描述你想要的图片`,
             rows: 4,
             onKeyDown: (e) => {
-              (e.metaKey || e.ctrlKey) && e.key === `Enter` && (e.preventDefault(), U());
+              (e.metaKey || e.ctrlKey) &&
+                e.key === `Enter` &&
+                (e.preventDefault(), quickCapabilityBlocked || U());
             },
           }),
+          (0, Q.jsx)(`div`, {
+            className: `quick-create-examples`,
+            "aria-label": `示例提示词`,
+            children: quickCreateExamples_[r].map((e) =>
+              (0, Q.jsx)(
+                `button`,
+                {
+                  type: `button`,
+                  className: `quick-create-example`,
+                  onClick: () => (c(e), T(`idle`), D(``)),
+                  children: e,
+                },
+                e,
+              ),
+            ),
+          }),
+          r === `video` && quickCapabilityBlocked &&
+            (0, Q.jsxs)(`div`, {
+              className: `quick-create-capability-alert`,
+              role: `status`,
+              children: [
+                (0, Q.jsx)(`span`, {
+                  className: `quick-create-capability-icon`,
+                  children: (0, Q.jsx)($, { name: `video`, size: 19 }),
+                }),
+                (0, Q.jsxs)(`div`, {
+                  children: [
+                    (0, Q.jsx)(`strong`, { children: `视频生成尚未配置` }),
+                    (0, Q.jsx)(`span`, {
+                      children: `添加支持视频的 AI 配置后，就能直接从这里生成。你的描述会自动保留。`,
+                    }),
+                  ],
+                }),
+                (0, Q.jsx)(`button`, {
+                  type: `button`,
+                  onClick: () => {
+                    (writeQuickCreateDraft_({ type: r, prompt: s }), quickOpenSettings?.());
+                  },
+                  children: `配置视频模型`,
+                }),
+              ],
+            }),
           r === `image` && a === `poster` &&
             (0, Q.jsx)(PosterTemplatePanel_, {
               styles: n,
@@ -62918,7 +63126,7 @@ function QuickCreatePanel_({
                       : `直接文字生成 · ${h}`,
                 ],
               }),
-              (0, Q.jsx)(`button`, { className: `quick-create-submit`, onClick: U, disabled: w === `loading`, title: `开始创作（⌘ Enter）`, "aria-label": `开始创作`, children: w === `loading` ? (0, Q.jsx)($, { name: `loader`, size: 20 }) : (0, Q.jsx)(`span`, { className: `quick-create-submit-arrow`, children: `↑` }) }),
+              (0, Q.jsx)(`button`, { className: `quick-create-submit`, onClick: U, disabled: w === `loading` || quickCapabilityBlocked, title: quickCapabilityBlocked ? `请先配置可用模型` : `开始创作（⌘ Enter）`, "aria-label": quickCapabilityBlocked ? `请先配置可用模型` : `开始创作`, children: w === `loading` ? (0, Q.jsx)($, { name: `loader`, size: 20 }) : (0, Q.jsx)(`span`, { className: `quick-create-submit-arrow`, children: `↑` }) }),
             ],
           }),
           E && (0, Q.jsx)(`p`, { className: `quick-create-message ${w}`, role: w === `error` ? `alert` : `status`, children: E }),
@@ -62972,6 +63180,7 @@ function pA({
   onRenameProject: r,
   onDeleteProject: i,
   onDeleteProjects: a,
+  onOpenSettings: quickOpenSettings,
   runtimeSettings: quickRuntimeSettings,
   promptStyles: quickPromptStyles,
 }) {
@@ -63053,6 +63262,7 @@ function pA({
     children: [
       (0, Q.jsx)(QuickCreatePanel_, {
         onCreateProject: t,
+        onOpenSettings: quickOpenSettings,
         runtimeSettings: quickRuntimeSettings,
         promptStyles: quickPromptStyles,
       }),
@@ -63654,7 +63864,10 @@ function hA() {
     }, []));
   let de = (0, v.useCallback)((e) => {
     (i(e), e !== `canvas` && o(null));
-  }, []);
+  }, []),
+    useStarterTemplate = (0, v.useCallback)((e) => {
+      (writeQuickCreateDraft_({ type: e.type, prompt: e.prompt }), de(`projects`));
+    }, [de]);
   return e
     ? (0, Q.jsx)(EC, {
         templateId: e,
@@ -63730,6 +63943,7 @@ function hA() {
                     onDeleteTemplate: ce,
                     onUseMaterial: (e) => se(`material`, e),
                     onUseTemplate: (e) => se(`template`, e),
+                    onUseStarterTemplate: useStarterTemplate,
                   })
                 : r === `templates`
                   ? (0, Q.jsx)(aD, {
@@ -63744,6 +63958,7 @@ function hA() {
                       onDeleteTemplate: ce,
                       onUseMaterial: (e) => se(`material`, e),
                       onUseTemplate: (e) => se(`template`, e),
+                      onUseStarterTemplate: useStarterTemplate,
                     })
                   : r === `settings`
                     ? (0, Q.jsx)(OT, {
@@ -63758,6 +63973,7 @@ function hA() {
                         onRenameProject: K,
                         onDeleteProject: q,
                         onDeleteProjects: le,
+                        onOpenSettings: () => de(`settings`),
                         runtimeSettings: N,
                         promptStyles: O,
                       }),

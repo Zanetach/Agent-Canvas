@@ -92,6 +92,9 @@ grep -q '专业模式' "$TEST_DIR/app.js"
 grep -q '核心数字或日期' "$TEST_DIR/app.js"
 grep -q '商业海报模板已锁定 3:4' "$TEST_DIR/app.js"
 grep -q '未命名 AI 配置' "$TEST_DIR/app.js"
+grep -q '视频生成尚未配置' "$TEST_DIR/app.js"
+grep -q '由 BeeMax 自动管理' "$TEST_DIR/app.js"
+grep -q '从一个常用模板开始' "$TEST_DIR/app.js"
 if grep -Eq '配置中转站|还没有中转站|中转站名称|children:"中转站"' "$TEST_DIR/app.js"; then
   print -u2 "前端仍包含旧的中转站文案"
   exit 1

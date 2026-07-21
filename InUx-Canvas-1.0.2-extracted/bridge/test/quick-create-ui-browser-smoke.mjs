@@ -57,6 +57,7 @@ try {
       simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
       moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
       tabs: [...document.querySelectorAll('.quick-create-type-tab')].map((element) => element.innerText),
+      exampleCount: document.querySelectorAll('.quick-create-example').length,
       modes: [...document.querySelectorAll('.quick-create-mode')].map((element) => element.textContent.trim()),
       promptPlaceholder: document.querySelector('.quick-create-prompt')?.placeholder || ''
     })`),
@@ -66,6 +67,7 @@ try {
   assert.match(initial.simpleHint, /直接文字生成/);
   assert.equal(initial.moreSettingsOpen, false);
   assert.deepEqual(initial.tabs, ["图片", "视频"]);
+  assert.equal(initial.exampleCount, 3);
   assert.deepEqual(initial.modes, [
     "直接生成",
     "商业海报",
@@ -126,6 +128,17 @@ try {
 
   await evaluate(`document.querySelector('.quick-create-more-settings > summary')?.click()`);
   await wait(50);
+  const videoCapability = JSON.parse(
+    await evaluate(`JSON.stringify({
+      alert: Boolean(document.querySelector('.quick-create-capability-alert')),
+      model: document.querySelector('[aria-label="生成模型"]')?.value || '',
+      disabled: document.querySelector('.quick-create-submit')?.disabled || false
+    })`),
+  );
+  if (!videoCapability.model) {
+    assert.equal(videoCapability.alert, true, "unconfigured video generation should be blocked before submit");
+    assert.equal(videoCapability.disabled, true);
+  }
   assert.equal(
     await evaluate(`document.querySelector('.quick-create-more-settings')?.open || false`),
     true,
@@ -160,6 +173,43 @@ try {
     await evaluate(`document.querySelector('[aria-label="分辨率"]')?.value`),
     "720p",
   );
+  await evaluate(`(() => {
+    const target = document.querySelector('.quick-create-capability-alert > button') ||
+      document.querySelector('[aria-label="设置"]');
+    target?.click();
+  })()`);
+  await wait(150);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.managed-provider-panel'))`),
+    true,
+    "managed BeeMax provider should render a read-only summary",
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.managed-provider-panel')?.innerText || ''`),
+    /新增视频配置/,
+  );
+  await evaluate(`document.querySelector('[aria-label="项目首页"]')?.click()`);
+  await wait(150);
+  await evaluate(`document.querySelector('[aria-label="模板库"]')?.click()`);
+  await wait(150);
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.starter-template-card').length`),
+    4,
+    "empty template library should offer starter templates",
+  );
+  await evaluate(`document.querySelector('.starter-template-card')?.click()`);
+  await wait(150);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
+    /产品发布海报/,
+    "starter template should return to the homepage with a useful draft",
+  );
+  await evaluate(`(() => {
+    const field = document.querySelector('.quick-create-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
   await evaluate(
     `[...document.querySelectorAll('.quick-create-type-tab')].find((button) => button.innerText === '图片')?.click()`,
   );
@@ -176,8 +226,23 @@ try {
     field.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await wait(100);
+  await evaluate(`document.querySelector('.quick-create-more-settings > summary')?.click()`);
+  await wait(50);
   await evaluate(
     `[...document.querySelectorAll('.quick-create-mode')].find((button) => button.innerText === '参考图生成')?.click()`,
+  );
+  await wait(50);
+  const imageCapabilityAfterStarter = await evaluate(`JSON.stringify({
+    disabled: document.querySelector('.quick-create-submit')?.disabled,
+    provider: document.querySelector('[aria-label="AI Provider"]')?.value || '',
+    model: document.querySelector('[aria-label="生成模型"]')?.value || '',
+    mode: [...document.querySelectorAll('.quick-create-mode')].find((button) => button.classList.contains('active'))?.innerText || '',
+    prompt: document.querySelector('.quick-create-prompt')?.value || ''
+  })`);
+  assert.equal(
+    JSON.parse(imageCapabilityAfterStarter).disabled,
+    false,
+    `image generation should remain configured after using a starter template: ${imageCapabilityAfterStarter}`,
   );
   await evaluate(`document.querySelector('.quick-create-submit')?.click()`);
   await wait(100);
@@ -236,6 +301,14 @@ try {
   }
   assert.equal(generated, true, "quick create did not automatically run image generation");
   assert.match(await evaluate(`document.querySelector('.canvas-title-input')?.value || ''`), /科技蓝机械蜜蜂/);
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
+    "图片创作 · 已有结果",
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-header h2')?.textContent.trim()`),
+    "继续创作",
+  );
 
   const imageCountBeforeTextOnly = await evaluate(
     `document.querySelectorAll('.result-image-node img').length`,
@@ -249,7 +322,7 @@ try {
   await wait(100);
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 第 3/3 步",
+    "图片创作 · 已有结果",
   );
   await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
   let textOnlyGenerated = false;
@@ -295,7 +368,7 @@ try {
   await wait(100);
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 第 3/3 步",
+    "图片创作 · 已有结果",
   );
   await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
   let assistantGenerated = false;
