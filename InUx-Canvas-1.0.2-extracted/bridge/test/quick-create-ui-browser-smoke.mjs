@@ -56,6 +56,9 @@ try {
       simpleActions: Boolean(document.querySelector('.quick-create-simple-actions')),
       simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
       moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
+      templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')),
+      templateInsideMore: Boolean(document.querySelector('.quick-create-more-settings .quick-create-template-card')),
+      templateHeading: document.querySelector('.quick-create-template-primary .quick-create-mode-section-title')?.innerText || '',
       tabs: [...document.querySelectorAll('.quick-create-type-tab')].map((element) => element.innerText),
       exampleCount: document.querySelectorAll('.quick-create-example').length,
       modes: [...document.querySelectorAll('.quick-create-mode')].map((element) => element.textContent.trim()),
@@ -66,6 +69,9 @@ try {
   assert.equal(initial.simpleActions, true);
   assert.match(initial.simpleHint, /直接文字生成/);
   assert.equal(initial.moreSettingsOpen, false);
+  assert.equal(initial.templateVisible, true);
+  assert.equal(initial.templateInsideMore, false);
+  assert.equal(initial.templateHeading, '创作模板');
   assert.deepEqual(initial.tabs, ["图片", "视频"]);
   assert.equal(initial.exampleCount, 3);
   assert.deepEqual(initial.modes, [
@@ -144,9 +150,9 @@ try {
   );
   assert.deepEqual(
     JSON.parse(
-      await evaluate(`JSON.stringify([...document.querySelectorAll('.quick-create-mode-section-title')].map((node) => node.textContent.trim()))`),
+      await evaluate(`JSON.stringify([...document.querySelectorAll('.quick-create-more-settings .quick-create-mode-section-title')].map((node) => node.textContent.trim()))`),
     ),
-    ["快捷素材", "生成方式", "图片处理"],
+    ["生成方式", "图片处理"],
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-template-card')?.innerText || ''`),
@@ -239,6 +245,10 @@ try {
     `[...document.querySelectorAll('.quick-create-type-tab')].find((button) => button.innerText === '视频')?.click()`,
   );
   await wait(50);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary'))`),
+    false,
+  );
   assert.equal(
     await evaluate(`Boolean(document.querySelector('[aria-label="视频时长"]'))`),
     true,

@@ -9545,6 +9545,13 @@ body {
   display: grid;
   gap: 8px;
 }
+.quick-create-template-primary {
+  margin-top: 3px;
+}
+.quick-create-template-primary > .quick-create-mode-section-title {
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
 .quick-create-template-card {
   align-items: center;
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-surface));

@@ -63158,6 +63158,45 @@ function QuickCreatePanel_({
               ),
             ),
           }),
+          r === `image` &&
+            (0, Q.jsxs)(`section`, {
+              className: `quick-create-template-shortcut quick-create-template-primary`,
+              children: [
+                (0, Q.jsx)(`span`, {
+                  className: `quick-create-mode-section-title`,
+                  children: `创作模板`,
+                }),
+                (0, Q.jsxs)(`button`, {
+                  ref: quickPosterShortcutRef,
+                  type: `button`,
+                  className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
+                  "aria-pressed": a === `poster`,
+                  onClick: () => quickSelectMode(quickPosterMaterial_.id),
+                  children: [
+                    (0, Q.jsx)(`span`, {
+                      className: `quick-create-template-card-icon`,
+                      children: (0, Q.jsx)($, {
+                        name: quickPosterMaterial_.icon,
+                        size: 18,
+                      }),
+                    }),
+                    (0, Q.jsxs)(`div`, {
+                      children: [
+                        (0, Q.jsx)(`strong`, {
+                          children: quickPosterMaterial_.label,
+                        }),
+                        (0, Q.jsx)(`span`, {
+                          children: quickPosterMaterial_.materialDescription,
+                        }),
+                      ],
+                    }),
+                    (0, Q.jsx)(`em`, {
+                      children: quickPosterMaterial_.materialAction,
+                    }),
+                  ],
+                }),
+              ],
+            }),
           r === `video` && quickCapabilityBlocked &&
             (0, Q.jsxs)(`div`, {
               className: `quick-create-capability-alert`,
@@ -63223,44 +63262,6 @@ function QuickCreatePanel_({
                 (0, Q.jsxs)(`div`, {
                   className: `quick-create-mode-groups`,
                   children: [
-                    (0, Q.jsxs)(`section`, {
-                      className: `quick-create-template-shortcut`,
-                      children: [
-                        (0, Q.jsx)(`span`, {
-                          className: `quick-create-mode-section-title`,
-                          children: `快捷素材`,
-                        }),
-                        (0, Q.jsxs)(`button`, {
-                          ref: quickPosterShortcutRef,
-                          type: `button`,
-                          className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
-                          "aria-pressed": a === `poster`,
-                          onClick: () => quickSelectMode(quickPosterMaterial_.id),
-                          children: [
-                            (0, Q.jsx)(`span`, {
-                              className: `quick-create-template-card-icon`,
-                              children: (0, Q.jsx)($, {
-                                name: quickPosterMaterial_.icon,
-                                size: 18,
-                              }),
-                            }),
-                            (0, Q.jsxs)(`div`, {
-                              children: [
-                                (0, Q.jsx)(`strong`, {
-                                  children: quickPosterMaterial_.label,
-                                }),
-                                (0, Q.jsx)(`span`, {
-                                  children: quickPosterMaterial_.materialDescription,
-                                }),
-                              ],
-                            }),
-                            (0, Q.jsx)(`em`, {
-                              children: quickPosterMaterial_.materialAction,
-                            }),
-                          ],
-                        }),
-                      ],
-                    }),
                     quickCreateModeGroups_.map((e) =>
                       (0, Q.jsxs)(
                         `section`,
