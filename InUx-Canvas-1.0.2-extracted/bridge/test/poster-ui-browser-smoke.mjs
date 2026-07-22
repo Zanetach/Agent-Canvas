@@ -60,17 +60,19 @@ try {
   const initial = await evaluate(`JSON.stringify({
     visible: Boolean(document.querySelector('.poster-template-panel')),
     brief: Boolean(document.querySelector('.poster-template-brief')),
-    simpleMode: document.querySelector('.image-composer-mode.active')?.innerText || '',
-    professionalFields: Boolean(document.querySelector('.image-professional-fields')),
+    modeSwitch: Boolean(document.querySelector('.image-composer-mode-switch')),
+    materialOpen: document.querySelector('.image-composer-poster-material')?.open || false,
+    creationFields: Boolean(document.querySelector('.image-creation-fields')),
     advancedOpen: document.querySelector('.poster-template-advanced')?.open || false,
     fields: document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea').length,
-    styles: [...document.querySelectorAll('.poster-template-style')].map((element) => element.innerText)
+    styles: [...document.querySelectorAll('.poster-template-style')].map((element) => element.textContent.trim())
   })`);
   const initialState = JSON.parse(initial);
   assert.equal(initialState.visible, true);
   assert.equal(initialState.brief, true);
-  assert.equal(initialState.simpleMode, "简单生成");
-  assert.equal(initialState.professionalFields, false);
+  assert.equal(initialState.modeSwitch, false);
+  assert.equal(initialState.materialOpen, false);
+  assert.equal(initialState.creationFields, true);
   assert.equal(initialState.advancedOpen, false);
   assert.equal(initialState.fields, 10);
   assert.deepEqual(initialState.styles, [
@@ -79,22 +81,7 @@ try {
     "深蓝金色招生紧迫风",
   ]);
 
-  await evaluate(
-    `[...document.querySelectorAll('.image-composer-mode')].find((button) => button.innerText === '专业模式')?.click()`,
-  );
-  await wait(100);
-  const professional = JSON.parse(await evaluate(`JSON.stringify({
-    panel: Boolean(document.querySelector('.poster-template-panel')),
-    fields: Boolean(document.querySelector('.image-professional-fields')),
-    active: document.querySelector('.image-composer-mode.active')?.innerText || ''
-  })`));
-  assert.equal(professional.panel, false);
-  assert.equal(professional.fields, true);
-  assert.equal(professional.active, "专业模式");
-
-  await evaluate(
-    `[...document.querySelectorAll('.image-composer-mode')].find((button) => button.innerText === '简单生成')?.click()`,
-  );
+  await evaluate(`document.querySelector('.image-composer-poster-material').open = true`);
   await wait(100);
 
   await evaluate(

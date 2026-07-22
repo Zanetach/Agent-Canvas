@@ -34745,9 +34745,6 @@ function pb({ id: e, data: t }) {
     [f, p] = (0, v.useState)([]),
     [m, h] = (0, v.useState)(!1),
     [posterRatioLocked, setPosterRatioLocked] = (0, v.useState)(!1),
-    [imageComposerMode, setImageComposerMode] = (0, v.useState)(() =>
-      t?.imageComposerMode === `professional` ? `professional` : `simple`,
-    ),
     [g, _] = (0, v.useState)(t?.text_api_id || t?.activeProviderId || ``),
     [y, b] = (0, v.useState)(t?.image_api_id || t?.activeProviderId || ``),
     [x, S] = (0, v.useState)(t?.video_api_id || t?.activeProviderId || ``),
@@ -34931,18 +34928,6 @@ function pb({ id: e, data: t }) {
         z((e) => ({ ...e, image_prompt: `` })));
   }, [Te, Ee, we, R.image_prompt, D]),
     (0, v.useEffect)(() => {
-      if (
-        D === `generateImage` &&
-        [`simple`, `professional`].includes(t?.imageComposerMode) &&
-        t.imageComposerMode !== imageComposerMode
-      )
-        (setImageComposerMode(t.imageComposerMode),
-          t.imageComposerMode === `professional` &&
-            typeof t?.image_prompt == `string` &&
-            t.image_prompt !== R.image_prompt &&
-            z((e) => ({ ...e, image_prompt: t.image_prompt })));
-    }, [D, t?.imageComposerMode, imageComposerMode]),
-    (0, v.useEffect)(() => {
       fetch(`/api/models`)
         .then((e) => e.json())
         .then((e) => {
@@ -35044,13 +35029,6 @@ function pb({ id: e, data: t }) {
             t.onGeneratorDataChange(e, { image_size: r }));
       },
       [e, ze, t?.onGeneratorDataChange],
-    ),
-    changeImageComposerMode = (0, v.useCallback)(
-      (mode) => {
-        (setImageComposerMode(mode),
-          t?.onGeneratorDataChange?.(e, { imageComposerMode: mode }));
-      },
-      [e, t?.onGeneratorDataChange],
     ),
     Ue = (0, v.useCallback)(
       (n) => {
@@ -36241,111 +36219,86 @@ function pb({ id: e, data: t }) {
             (0, Q.jsxs)(`div`, {
               className: `node-body`,
               children: [
+                (0, Q.jsx)(`input`, {
+                  ref: C,
+                  type: `file`,
+                  accept: l_,
+                  multiple: !0,
+                  onChange: Ze,
+                  style: { display: `none` },
+                }),
+                ut(),
                 (0, Q.jsxs)(`div`, {
-                  className: `image-composer-mode-switch`,
-                  role: `tablist`,
+                  className: `image-creation-fields`,
                   children: [
-                    (0, Q.jsx)(`button`, {
-                      type: `button`,
-                      role: `tab`,
-                      "aria-selected": imageComposerMode === `simple`,
-                      className: `image-composer-mode ${imageComposerMode === `simple` ? `active` : ``}`,
-                      onClick: () => changeImageComposerMode(`simple`),
-                      children: `简单生成`,
+                    (0, Q.jsxs)(`div`, {
+                      className: `node-field`,
+                      children: [
+                        (0, Q.jsx)(`label`, { children: `画面描述` }),
+                        (0, Q.jsx)(xy, {
+                          value: R.image_prompt,
+                          onChange: (e) => He(`image_prompt`, e),
+                          referenceImages: Se,
+                          placeholder: `描述构图、光线、色彩、主体和细节...`,
+                          rows: 4,
+                          disabled: ze,
+                        }),
+                      ],
                     }),
-                    (0, Q.jsx)(`button`, {
-                      type: `button`,
-                      role: `tab`,
-                      "aria-selected": imageComposerMode === `professional`,
-                      className: `image-composer-mode ${imageComposerMode === `professional` ? `active` : ``}`,
-                      onClick: () => changeImageComposerMode(`professional`),
-                      children: `专业模式`,
+                    (0, Q.jsxs)(`div`, {
+                      className: `node-field`,
+                      children: [
+                        (0, Q.jsx)(`label`, { children: `避免出现（可选）` }),
+                        (0, Q.jsx)(`textarea`, {
+                          value: R.image_negative_prompt,
+                          onChange: (e) =>
+                            He(`image_negative_prompt`, e.target.value),
+                          placeholder: `例如：乱码、水印、低清晰度、拥挤排版`,
+                          rows: 3,
+                          disabled: ze,
+                        }),
+                      ],
                     }),
                   ],
                 }),
-                imageComposerMode === `simple`
-                  ? (0, Q.jsxs)(Q.Fragment, {
-                      children: [
-                        (0, Q.jsx)(`input`, {
-                          ref: C,
-                          type: `file`,
-                          accept: l_,
-                          multiple: !0,
-                          onChange: Ze,
-                          style: { display: `none` },
-                        }),
-                        (0, Q.jsx)(PosterTemplatePanel_, {
-                          styles: Be,
-                          referenceCount: Se.length + f.length,
-                          uploadDisabled: Ce === 0 || ze,
-                          onUpload: () => C.current?.click(),
-                          onApply: async (n) => {
-                            if (ze) return;
-                            let r = n.aspect_ratio || `3:4`,
-                              i = h_(r);
-                            (z((e) => ({
-                              ...e,
-                              image_prompt: n.prompt,
-                              image_size: r,
-                              image_size_preset: i,
-                            })),
-                              t?.onGeneratorDataChange?.(e, {
-                                image_prompt: n.prompt,
-                                promptDraft: n.prompt,
-                                image_size: r,
-                                image_size_preset: i,
-                              }),
-                              setPosterRatioLocked(!0));
-                            await tt({
-                              image_prompt: n.prompt,
-                              image_size: r,
-                              image_size_preset: i,
-                            });
-                          },
-                        }),
-                      ],
-                    })
-                  : (0, Q.jsxs)(Q.Fragment, {
-                      children: [
-                        ut(),
-                        (0, Q.jsxs)(`div`, {
-                          className: `image-professional-fields`,
-                          children: [
-                            (0, Q.jsxs)(`div`, {
-                              className: `node-field`,
-                              children: [
-                                (0, Q.jsx)(`label`, { children: `画面描述` }),
-                                (0, Q.jsx)(xy, {
-                                  value: R.image_prompt,
-                                  onChange: (e) => He(`image_prompt`, e),
-                                  referenceImages: Se,
-                                  placeholder: `描述构图、光线、色彩、主体和细节...`,
-                                  rows: 4,
-                                  disabled: ze,
-                                }),
-                              ],
-                            }),
-                            (0, Q.jsxs)(`div`, {
-                              className: `node-field`,
-                              children: [
-                                (0, Q.jsx)(`label`, { children: `避免出现（可选）` }),
-                                (0, Q.jsx)(`textarea`, {
-                                  value: R.image_negative_prompt,
-                                  onChange: (e) =>
-                                    He(`image_negative_prompt`, e.target.value),
-                                  placeholder: `例如：乱码、水印、低清晰度、拥挤排版`,
-                                  rows: 3,
-                                  disabled: ze,
-                                }),
-                              ],
-                            }),
-                          ],
-                        }),
-                      ],
+                (0, Q.jsxs)(`details`, {
+                  className: `image-composer-poster-material`,
+                  children: [
+                    (0, Q.jsx)(`summary`, { children: `商业海报素材（可选）` }),
+                    (0, Q.jsx)(PosterTemplatePanel_, {
+                      styles: Be,
+                      referenceCount: Se.length + f.length,
+                      uploadDisabled: Ce === 0 || ze,
+                      onUpload: () => C.current?.click(),
+                      onApply: async (n) => {
+                        if (ze) return;
+                        let r = n.aspect_ratio || `3:4`,
+                          i = h_(r);
+                        (z((e) => ({
+                          ...e,
+                          image_prompt: n.prompt,
+                          image_size: r,
+                          image_size_preset: i,
+                        })),
+                          t?.onGeneratorDataChange?.(e, {
+                            image_prompt: n.prompt,
+                            promptDraft: n.prompt,
+                            image_size: r,
+                            image_size_preset: i,
+                          }),
+                          setPosterRatioLocked(!0));
+                        await tt({
+                          image_prompt: n.prompt,
+                          image_size: r,
+                          image_size_preset: i,
+                        });
+                      },
                     }),
+                  ],
+                }),
               ],
             }),
-            imageComposerMode === `professional` && (0, Q.jsxs)(`div`, {
+            (0, Q.jsxs)(`div`, {
               className: `processor-footer-wrap`,
               ref: w,
               children: [
@@ -52729,8 +52682,8 @@ function jk({
                 type: `button`,
                 className: `canvas-overlay-close-btn`,
                 onClick: closeComposer,
-                title: `关闭专业模式`,
-                "aria-label": `关闭专业模式`,
+                title: `关闭节点编辑`,
+                "aria-label": `关闭节点编辑`,
                 children: (0, Q.jsx)($, { name: `x`, size: 15 }),
               }),
             (0, Q.jsx)(
@@ -52936,23 +52889,7 @@ function assistantSourceNode_(node, asset, ratio) {
     },
   };
 }
-function assistantProfessionalConfigSnapshot_(data = {}) {
-  return JSON.stringify({
-    promptDraft: data.promptDraft || ``,
-    imagePrompt: data.image_prompt || ``,
-    negativePrompt: data.image_negative_prompt || ``,
-    model: data.image_model || ``,
-    apiId: data.image_api_id || ``,
-    size: data.image_size || `3:4`,
-    resolution: data.image_resolution || `1k`,
-    count: data.image_count || 1,
-    operation: data.image_operation || `generate`,
-    maskUrl: data.mask_url || ``,
-    connectedImages: data.connectedImages || [],
-    uploadedReferenceImages: data.uploadedReferenceImages || [],
-  });
-}
-function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, onProfessionalMode, hasResult = !1, hidden = !1 }) {
+function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, initialPrompt = ``, hasResult = !1, isGenerating = !1, hidden = !1 }) {
   let [asset, setAsset] = (0, v.useState)(null),
     [prompt, setPrompt] = (0, v.useState)(``),
     [status, setStatus] = (0, v.useState)(`idle`),
@@ -52962,19 +52899,21 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
     [ratio, setRatio] = (0, v.useState)(`3:4`),
     [resolution, setResolution] = (0, v.useState)(`1k`),
     [count, setCount] = (0, v.useState)(1),
-    [settingsTouched, setSettingsTouched] = (0, v.useState)(!1),
     fileInputRef = (0, v.useRef)(null),
+    injectedPromptRef = (0, v.useRef)(``),
     imageProviders = (0, v.useMemo)(() => P_(providers, [], `image`), [providers]),
     activeProvider = imageProviders.find((provider) => provider.id === providerId) || imageProviders[0] || null,
     availableModels = activeProvider?.models || [],
-    activeModel = availableModels.includes(model) ? model : activeProvider?.defaultModel || availableModels[0] || ``,
-    currentStep = !prompt.trim() ? 1 : 3;
+    activeModel = availableModels.includes(model) ? model : activeProvider?.defaultModel || availableModels[0] || ``;
   ((0, v.useEffect)(() => {
     activeProvider?.id && activeProvider.id !== providerId && setProviderId(activeProvider.id);
   }, [activeProvider?.id, providerId]),
     (0, v.useEffect)(() => {
       activeModel && activeModel !== model && setModel(activeModel);
-    }, [activeModel, model]));
+    }, [activeModel, model]),
+    (0, v.useEffect)(() => {
+      initialPrompt && initialPrompt !== injectedPromptRef.current && ((injectedPromptRef.current = initialPrompt), setPrompt(initialPrompt));
+    }, [initialPrompt]));
   let uploadAsset = async (file) => {
       if (!file) {
         (setStatus(`error`), setMessage(f_()));
@@ -53004,6 +52943,7 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
       (setAsset(null), setStatus(`idle`), setMessage(``), onAssetClear?.());
     },
     handleGenerate = async () => {
+      if (isGenerating || status === `loading`) return;
       if (!prompt.trim()) {
         (setStatus(`error`), setMessage(`请先描述想生成的图片`));
         return;
@@ -53040,40 +52980,30 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
         children: [
           (0, Q.jsx)(`span`, {
             className: `canvas-image-assistant-progress`,
-            children: hasResult ? `图片创作 · 已有结果` : `图片创作 · 第 ${currentStep}/3 步`,
+            children: `图片创作`,
           }),
-          (0, Q.jsx)(`h2`, { children: hasResult ? `继续创作` : `创建你的图片` }),
+          (0, Q.jsx)(`h2`, {
+            children: isGenerating ? `正在创作` : hasResult ? `继续创作` : `创建你的图片`,
+          }),
           (0, Q.jsx)(`p`, {
-            children: hasResult
-              ? `基于现有结果继续修改、生成变体，或描述一个全新的画面`
-              : `跟随 3 个简单步骤，轻松生成你想要的图片`,
-          }),
-          (0, Q.jsxs)(`button`, {
-            type: `button`,
-            className: `canvas-image-assistant-professional`,
-            onClick: () =>
-              onProfessionalMode?.({
-                asset,
-                prompt: prompt.trim(),
-                apiId: activeProvider?.id || ``,
-                model: activeModel,
-                ratio,
-                resolution,
-                count,
-                settingsTouched,
-              }),
-            children: [(0, Q.jsx)($, { name: `settings`, size: 16 }), `专业模式`],
+            children: isGenerating
+              ? `首页提交的内容已开始生成，结果会自动显示在左侧画布`
+              : hasResult
+                ? `基于现有结果继续修改、生成变体，或描述一个全新的画面`
+                : `描述画面，需要时添加参考图，然后直接生成`,
           }),
         ],
       }),
       (0, Q.jsxs)(`section`, {
-        className: `canvas-image-assistant-step ${currentStep === 1 ? `active` : `complete`}`,
+        className: `canvas-image-assistant-form`,
         children: [
           (0, Q.jsxs)(`div`, {
-            className: `canvas-image-assistant-step-heading`,
+            className: `canvas-image-assistant-field-heading`,
             children: [
-              (0, Q.jsx)(`span`, { children: `1` }),
-              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `描述想生成的图片` }),
+              (0, Q.jsx)(`strong`, {
+                children: hasResult ? `描述下一张图片` : `描述想生成的图片`,
+              }),
+              (0, Q.jsx)(`span`, { children: `必填` }),
             ],
           }),
           (0, Q.jsx)(`p`, { children: `用一句话描述主体、场景、风格或用途` }),
@@ -53093,13 +53023,13 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
         ],
       }),
       (0, Q.jsxs)(`section`, {
-        className: `canvas-image-assistant-step canvas-image-assistant-optional ${asset ? `complete` : ``}`,
+        className: `canvas-image-assistant-reference ${asset ? `has-reference` : ``}`,
         children: [
           (0, Q.jsxs)(`div`, {
-            className: `canvas-image-assistant-step-heading`,
+            className: `canvas-image-assistant-field-heading`,
             children: [
-              (0, Q.jsx)(`span`, { children: `2` }),
-              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `添加参考图（可选）` }),
+              (0, Q.jsx)(`strong`, { children: `参考图` }),
+              (0, Q.jsx)(`span`, { children: `可选` }),
             ],
           }),
           (0, Q.jsx)(`p`, { children: `需要保持风格或构图时再上传，不上传也能生成` }),
@@ -53131,41 +53061,32 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
           (0, Q.jsx)(`input`, { ref: fileInputRef, type: `file`, accept: l_, hidden: !0, onChange: handleFileChange }),
         ],
       }),
-      (0, Q.jsxs)(`section`, {
-        className: `canvas-image-assistant-step canvas-image-assistant-generate-step ${currentStep === 3 ? `active` : ``}`,
-        children: [
-          (0, Q.jsxs)(`div`, {
-            className: `canvas-image-assistant-step-heading`,
-            children: [
-              (0, Q.jsx)(`span`, { children: `3` }),
-              (0, Q.jsx)(`strong`, { className: `canvas-image-assistant-step-title`, children: `开始生成` }),
-            ],
-          }),
-          (0, Q.jsx)(`p`, { children: `确认后，AI 将为你生成图片` }),
+      (0, Q.jsx)(`div`, {
+        className: `canvas-image-assistant-actions`,
+        children:
           (0, Q.jsxs)(`button`, {
             type: `button`,
             className: `canvas-image-assistant-generate`,
             onClick: handleGenerate,
-            disabled: status === `loading`,
+            disabled: isGenerating || status === `loading`,
             children: [
-              (0, Q.jsx)($, { name: status === `loading` ? `loader` : `sparkles`, size: 18 }),
-              status === `loading` ? `正在生成…` : `开始生成`,
+              (0, Q.jsx)($, { name: isGenerating || status === `loading` ? `loader` : `sparkles`, size: 18 }),
+              isGenerating || status === `loading` ? `正在生成…` : `开始生成`,
             ],
           }),
-        ],
       }),
       message && (0, Q.jsx)(`p`, { className: `canvas-image-assistant-message ${status}`, role: status === `error` ? `alert` : `status`, children: message }),
       (0, Q.jsxs)(`details`, {
         className: `canvas-image-assistant-settings`,
         children: [
-          (0, Q.jsxs)(`summary`, { children: [(0, Q.jsx)($, { name: `settings`, size: 17 }), `专业设置`] }),
+          (0, Q.jsxs)(`summary`, { children: [(0, Q.jsx)($, { name: `settings`, size: 17 }), `生成设置`] }),
           (0, Q.jsxs)(`div`, {
             children: [
-              (0, Q.jsx)(`select`, { value: providerId || activeProvider?.id || ``, onChange: (event) => (setProviderId(event.target.value), setSettingsTouched(!0)), "aria-label": `图片 Provider`, children: imageProviders.map((provider) => (0, Q.jsx)(`option`, { value: provider.id, children: provider.name || provider.id }, provider.id)) }),
-              (0, Q.jsx)(`select`, { value: activeModel, onChange: (event) => (setModel(event.target.value), setSettingsTouched(!0)), "aria-label": `图片模型`, children: availableModels.map((modelName) => (0, Q.jsx)(`option`, { value: modelName, children: modelName }, modelName)) }),
-              (0, Q.jsx)(`select`, { value: count, onChange: (event) => (setCount(Number(event.target.value)), setSettingsTouched(!0)), "aria-label": `图片数量`, children: [1, 2, 3, 4].map((amount) => (0, Q.jsx)(`option`, { value: amount, children: `${amount} 张` }, amount)) }),
-              (0, Q.jsx)(`select`, { value: ratio, onChange: (event) => (setRatio(event.target.value), setSettingsTouched(!0)), "aria-label": `图片比例`, children: quickImageRatios_.map((preset) => (0, Q.jsx)(`option`, { value: preset.id, children: preset.id }, preset.id)) }),
-              (0, Q.jsx)(`select`, { value: resolution, onChange: (event) => (setResolution(event.target.value), setSettingsTouched(!0)), "aria-label": `图片分辨率`, children: [`1k`, `2k`, `4k`].map((resolutionOption) => (0, Q.jsx)(`option`, { value: resolutionOption, children: resolutionOption.toUpperCase() }, resolutionOption)) }),
+              (0, Q.jsx)(`select`, { value: providerId || activeProvider?.id || ``, onChange: (event) => setProviderId(event.target.value), "aria-label": `图片 Provider`, children: imageProviders.map((provider) => (0, Q.jsx)(`option`, { value: provider.id, children: provider.name || provider.id }, provider.id)) }),
+              (0, Q.jsx)(`select`, { value: activeModel, onChange: (event) => setModel(event.target.value), "aria-label": `图片模型`, children: availableModels.map((modelName) => (0, Q.jsx)(`option`, { value: modelName, children: modelName }, modelName)) }),
+              (0, Q.jsx)(`select`, { value: count, onChange: (event) => setCount(Number(event.target.value)), "aria-label": `图片数量`, children: [1, 2, 3, 4].map((amount) => (0, Q.jsx)(`option`, { value: amount, children: `${amount} 张` }, amount)) }),
+              (0, Q.jsx)(`select`, { value: ratio, onChange: (event) => setRatio(event.target.value), "aria-label": `图片比例`, children: quickImageRatios_.map((preset) => (0, Q.jsx)(`option`, { value: preset.id, children: preset.id }, preset.id)) }),
+              (0, Q.jsx)(`select`, { value: resolution, onChange: (event) => setResolution(event.target.value), "aria-label": `图片分辨率`, children: [`1k`, `2k`, `4k`].map((resolutionOption) => (0, Q.jsx)(`option`, { value: resolutionOption, children: resolutionOption.toUpperCase() }, resolutionOption)) }),
             ],
           }),
         ],
@@ -53208,7 +53129,6 @@ function Rk({
     assistantFitRef = (0, v.useRef)(null),
     assistantSourceRef = (0, v.useRef)(null),
     assistantResultRef = (0, v.useRef)(null),
-    assistantProfessionalPlaceholderRef = (0, v.useRef)(null),
     j = (0, v.useCallback)(
       (t, n = {}) => {
         if (!t) return;
@@ -60608,108 +60528,17 @@ function Rk({
         (assistantSourceRef.current = null),
         (assistantFitRef.current = t ? [t] : null));
     }, [O, T]),
-    quickAssistantOpenProfessional = (0, v.useCallback)((t = {}) => {
-      let e = assistantResultRef.current,
-        n = !1;
-      e && !Y.current.some((t) => t.id === e) && (e = null);
-      e ||
-        (e = [...Y.current]
-          .reverse()
-          .find(
-            (e) =>
-              e.type === `result` &&
-              e.data?.resultType === `generateImage` &&
-              e.data?.imageSource !== `upload`,
-          )?.id);
-      e || ((e = ensureAssistantResult(t.ratio || `3:4`)), (n = !0));
-      if (!e) return;
-      let r = rt.current[e],
-        i = Y.current.find((e) => e.id === r)?.data || {},
-        a = {
-          ...i,
-          imageComposerMode: `professional`,
-          ...(t.prompt
-            ? { promptDraft: t.prompt, image_prompt: t.prompt }
-            : {}),
-          image_model: t.model || i.image_model || ``,
-          image_api_id: t.apiId || i.image_api_id || ``,
-          image_size: t.ratio || i.image_size || `3:4`,
-          image_resolution: t.resolution || i.image_resolution || `1k`,
-          image_count: t.count || i.image_count || 1,
-          ...(t.asset?.url
-            ? {
-                connectedImages: [t.asset.url],
-                uploadedReferenceImages: [t.asset.url],
-              }
-            : {}),
-        };
-      (n &&
-          (assistantProfessionalPlaceholderRef.current = {
-            id: e,
-            initialConfig: assistantProfessionalConfigSnapshot_(a),
-            preserveOnClose: !!t.settingsTouched,
-          }),
-        T((n) => {
-          let i = n.map((n) =>
-            n.id === e
-              ? {
-                  ...n,
-                  selected: !0,
-                  data: {
-                    ...n.data,
-                    ...(t.prompt
-                      ? { promptDraft: t.prompt, image_prompt: t.prompt }
-                      : {}),
-                    imageSize: t.ratio || n.data?.imageSize || `3:4`,
-                  },
-                }
-              : n.id === r
-                ? {
-                    ...n,
-                    selected: !1,
-                    data: a,
-                  }
-                : { ...n, selected: !1 },
-          );
-          return ((Y.current = i), i);
-        }),
-        Vt(e));
-    }, [ensureAssistantResult, T, Vt]),
-    quickAssistantCloseProfessional = (0, v.useCallback)(() => {
-      let a = assistantProfessionalPlaceholderRef.current,
-        e = a?.id || null,
-        t = e ? rt.current[e] : null,
-        r = e ? Y.current.find((t) => t.id === e) : null,
-        i = t ? Y.current.find((e) => e.id === t) : null,
-        o = !!a?.initialConfig &&
-          a.initialConfig !== assistantProfessionalConfigSnapshot_(i?.data || {}),
-        n = !!e &&
-          !a?.preserveOnClose &&
-          !o &&
-          !(
-            r?.data?.imageUrl ||
-            r?.data?.imageUrls?.length ||
-            r?.data?.imageHistory?.length ||
-            i?.data?.promptDraft?.trim() ||
-            i?.data?.image_prompt?.trim()
-          );
-      T((r) => {
-        let i = r
-          .filter((r) => !n || (r.id !== e && r.id !== t))
-          .map((e) => (e.selected ? { ...e, selected: !1 } : e));
-        return ((Y.current = i), i);
+    quickCloseNodeEditor = (0, v.useCallback)(() => {
+      T((e) => {
+        let t = e.map((e) => (e.selected ? { ...e, selected: !1 } : e));
+        return ((Y.current = t), t);
       });
-      (n &&
-        (O((n) => n.filter((n) => n.source !== e && n.target !== e)),
-        delete rt.current[e],
-        assistantResultRef.current === e && (assistantResultRef.current = null)),
-        (assistantProfessionalPlaceholderRef.current = null),
-        V(null),
+      (V(null),
         Vt(null),
         window.requestAnimationFrame(() =>
-          document.querySelector(`.canvas-image-assistant-professional`)?.focus(),
+          document.querySelector(`.canvas-image-assistant-prompt`)?.focus(),
         ));
-    }, [O, T, V, Vt]),
+    }, [T, V, Vt]),
     quickAssistantGenerate = (0, v.useCallback)(
       async ({ asset: e, prompt: t, apiId: n, model: r, ratio: i, resolution: a, count: o }) => {
         let s = null,
@@ -61601,6 +61430,18 @@ function Rk({
         y: Math.max(8, Math.min(M.y, window.innerHeight - t - 8)),
       };
     }, [M]),
+    assistantImageResults = w.filter(
+      (e) =>
+        e.type === `result` &&
+        e.data?.resultType === `generateImage` &&
+        e.data?.imageSource !== `upload`,
+    ),
+    assistantImageResult =
+      assistantImageResults.find((e) => e.data?.generating === !0) ||
+      [...assistantImageResults]
+        .reverse()
+        .find((e) => e.data?.imageUrl || e.data?.imageUrls?.length) ||
+      assistantImageResults[assistantImageResults.length - 1],
     assistantAdvancedMode = !!Zr || !!Qr || !!$r || !!ei || !!B;
   return (
     (0, v.useEffect)(() => {
@@ -61764,7 +61605,7 @@ function Rk({
                 promptStyles: p,
                 hidden: B?.type === `composer`,
                 onExpand: () => V({ type: `composer`, id: Zr.resultId }),
-                onClose: quickAssistantCloseProfessional,
+                onClose: quickCloseNodeEditor,
               }),
             Qr &&
               (0, Q.jsx)(jk, {
@@ -61814,22 +61655,25 @@ function Rk({
               splitterNode: ei,
               promptStyles: p,
               overlayBoundaryRef: le,
-              onClose: () =>
-                B?.type === `composer`
-                  ? quickAssistantCloseProfessional()
+                onClose: () =>
+                  B?.type === `composer`
+                  ? quickCloseNodeEditor()
                   : V(null),
             }),
             (0, Q.jsx)(CanvasImageAssistant_, {
               providers: y.providers,
-              hasResult: w.some(
-                (e) =>
-                  e.type === `result` &&
-                  (e.data?.imageUrl || e.data?.imageUrls?.length),
+              initialPrompt:
+                assistantImageResult?.data?.promptDraft ||
+                assistantImageResult?.data?.image_prompt ||
+                ``,
+              hasResult: !!(
+                assistantImageResult?.data?.imageUrl ||
+                assistantImageResult?.data?.imageUrls?.length
               ),
+              isGenerating: assistantImageResult?.data?.generating === !0,
               onAssetReady: quickAssistantAssetReady,
               onAssetClear: quickAssistantAssetClear,
               onGenerate: quickAssistantGenerate,
-              onProfessionalMode: quickAssistantOpenProfessional,
               hidden: assistantAdvancedMode,
             }),
           ],
@@ -62911,6 +62755,8 @@ function QuickCreatePanel_({
     [A, j] = (0, v.useState)(``),
     M = (0, v.useRef)(null),
     N = (0, v.useRef)(null),
+    quickPromptRef = (0, v.useRef)(null),
+    quickPosterShortcutRef = (0, v.useRef)(null),
     quickPreviewCleanupRef = (0, v.useRef)([]),
     P = (0, v.useMemo)(
       () => P_(t?.providers || [], [], r === `video` ? `video` : `image`),
@@ -62921,7 +62767,13 @@ function QuickCreatePanel_({
     L = I.includes(A) ? A : F?.defaultModel || I[0] || ``,
     R = d.map((e) => e.preview),
     quickCapabilityBlocked = !F?.id || !L,
-    quickActiveMode = quickCreateModes_.find((e) => e.id === a) || quickCreateModes_[0];
+    quickActiveMode = quickCreateModes_.find((e) => e.id === a) || quickCreateModes_[0],
+    quickClosePosterModal = (0, v.useCallback)((focusPrompt = !1) => {
+      (o(`generate`),
+        window.requestAnimationFrame(() =>
+          (focusPrompt ? quickPromptRef : quickPosterShortcutRef).current?.focus(),
+        ));
+    }, []);
   quickPreviewCleanupRef.current = [...R, p?.preview].filter(Boolean);
   ((0, v.useEffect)(() => {
     F?.id && F.id !== O && k(F.id);
@@ -62932,6 +62784,21 @@ function QuickCreatePanel_({
     (0, v.useEffect)(() => {
       writeQuickCreateDraft_({ type: r, prompt: s });
     }, [r, s]),
+    (0, v.useEffect)(() => {
+      if (a !== `poster`) return;
+      let e = document.body.style.overflow,
+        t = (e) => {
+          e.key === `Escape` && quickClosePosterModal();
+        };
+      return (
+        (document.body.style.overflow = `hidden`),
+        document.addEventListener(`keydown`, t),
+        () => {
+          ((document.body.style.overflow = e),
+            document.removeEventListener(`keydown`, t));
+        }
+      );
+    }, [a, quickClosePosterModal]),
     (0, v.useEffect)(
       () => () =>
         quickPreviewCleanupRef.current.forEach((e) => URL.revokeObjectURL(e)),
@@ -63086,7 +62953,7 @@ function QuickCreatePanel_({
               }),
             ],
           }),
-          (R.length > 0 || r === `image` && a !== `generate`) &&
+          (R.length > 0 || r === `image` && a !== `generate` && a !== `poster`) &&
             (0, Q.jsxs)(`div`, {
               className: `quick-create-assets`,
               children: [
@@ -63104,6 +62971,7 @@ function QuickCreatePanel_({
               ],
             }),
           (0, Q.jsx)(`textarea`, {
+            ref: quickPromptRef,
             className: `quick-create-prompt`,
             value: s,
             onChange: (e) => (c(e.target.value), T(`idle`), D(``)),
@@ -63162,13 +63030,6 @@ function QuickCreatePanel_({
                 }),
               ],
             }),
-          r === `image` && a === `poster` &&
-            (0, Q.jsx)(PosterTemplatePanel_, {
-              styles: n,
-              referenceCount: d.length,
-              onUpload: () => M.current?.click(),
-              onApply: H,
-            }),
           (0, Q.jsxs)(`div`, {
             className: `quick-create-simple-actions`,
             children: [
@@ -63216,6 +63077,7 @@ function QuickCreatePanel_({
                           children: `快捷素材`,
                         }),
                         (0, Q.jsxs)(`button`, {
+                          ref: quickPosterShortcutRef,
                           type: `button`,
                           className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
                           "aria-pressed": a === `poster`,
@@ -63349,6 +63211,50 @@ function QuickCreatePanel_({
           (0, Q.jsx)(`input`, { ref: N, type: `file`, accept: `image/png`, hidden: !0, onChange: B }),
         ],
       }),
+      r === `image` && a === `poster` &&
+        (0, Q.jsx)(`div`, {
+          className: `quick-create-poster-overlay`,
+          onClick: () => quickClosePosterModal(),
+          children: (0, Q.jsxs)(`section`, {
+            className: `quick-create-poster-modal`,
+            role: `dialog`,
+            "aria-modal": `true`,
+            "aria-labelledby": `quick-create-poster-modal-title`,
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              (0, Q.jsxs)(`header`, {
+                className: `quick-create-poster-modal-header`,
+                children: [
+                  (0, Q.jsxs)(`div`, {
+                    children: [
+                      (0, Q.jsx)(`strong`, {
+                        id: `quick-create-poster-modal-title`,
+                        children: `商业海报素材`,
+                      }),
+                      (0, Q.jsx)(`span`, {
+                        children: `选择风格并填写内容，完成后回填到主输入框`,
+                      }),
+                    ],
+                  }),
+                  (0, Q.jsx)(`button`, {
+                    type: `button`,
+                    className: `quick-create-poster-modal-close`,
+                    onClick: () => quickClosePosterModal(),
+                    "aria-label": `关闭商业海报弹窗`,
+                    autoFocus: !0,
+                    children: (0, Q.jsx)($, { name: `x`, size: 19 }),
+                  }),
+                ],
+              }),
+              (0, Q.jsx)(PosterTemplatePanel_, {
+                styles: n,
+                referenceCount: d.length,
+                onUpload: () => M.current?.click(),
+                onApply: (e) => (H(e), quickClosePosterModal(!0)),
+              }),
+            ],
+          }),
+        }),
     ],
   });
 }

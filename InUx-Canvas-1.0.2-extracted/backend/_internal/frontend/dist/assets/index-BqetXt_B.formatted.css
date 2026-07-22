@@ -8826,7 +8826,7 @@ body {
   }
 }
 
-/* Beginner image creation assistant */
+/* Unified image creator */
 .canvas-flow-shell.with-image-assistant > .react-flow {
   width: calc(100% - 420px);
 }
@@ -8878,73 +8878,37 @@ body {
   line-height: 1.55;
   margin: 8px 0 0;
 }
-.canvas-image-assistant-professional {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: 9px;
-  color: var(--fg-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  gap: 6px;
-  margin-top: 14px;
-  min-height: 34px;
-  padding: 0 11px;
+.canvas-image-assistant-form,
+.canvas-image-assistant-reference {
+  margin-bottom: 18px;
+  padding: 0 10px;
 }
-.canvas-image-assistant-professional:hover,
-.canvas-image-assistant-professional:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-  outline: none;
-}
-.canvas-image-assistant-step {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 15px;
-  margin-bottom: 12px;
-  padding: 14px;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
-}
-.canvas-image-assistant-step.active {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border-default));
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.canvas-image-assistant-step.complete .canvas-image-assistant-step-heading > span {
-  background: var(--success, #16a34a);
-}
-.canvas-image-assistant-step-heading {
+.canvas-image-assistant-field-heading {
   align-items: center;
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 5px;
 }
-.canvas-image-assistant-step-heading > span {
-  align-items: center;
-  background: var(--fg-tertiary);
-  border-radius: 50%;
-  color: #fff;
-  display: inline-flex;
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 800;
-  height: 25px;
-  justify-content: center;
-  width: 25px;
-}
-.canvas-image-assistant-step.active .canvas-image-assistant-step-heading > span {
-  background: var(--accent);
-}
-.canvas-image-assistant-step-title {
-  font-size: 15px;
+.canvas-image-assistant-field-heading strong {
+  color: var(--fg-primary);
+  font-size: 14px;
   font-weight: 760;
 }
-.canvas-image-assistant-step > p {
+.canvas-image-assistant-field-heading span {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--fg-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+.canvas-image-assistant-form > p,
+.canvas-image-assistant-reference > p {
   color: var(--fg-secondary);
   font-size: 12px;
   line-height: 1.5;
-  margin: 7px 0 10px 35px;
+  margin: 0 0 10px;
 }
 .canvas-image-assistant-upload {
   align-items: center;
@@ -8957,7 +8921,7 @@ body {
   flex-direction: column;
   gap: 7px;
   justify-content: center;
-  min-height: 132px;
+  min-height: 104px;
   overflow: hidden;
   padding: 14px;
   width: 100%;
@@ -9072,6 +9036,9 @@ body {
   cursor: wait;
   opacity: 0.66;
 }
+.canvas-image-assistant-actions {
+  padding: 0 10px 12px;
+}
 .canvas-image-assistant-message {
   color: var(--fg-secondary);
   font-size: 12px;
@@ -9087,6 +9054,7 @@ body {
 .canvas-image-assistant-settings {
   border: 1px solid var(--border-default);
   border-radius: 12px;
+  margin: 0 10px;
   overflow: hidden;
 }
 .canvas-image-assistant-settings > summary {
@@ -9141,12 +9109,6 @@ body {
     right: 16px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .canvas-image-assistant-step {
-    transition: none;
-  }
-}
-
 /* Homepage quick creator */
 .app-shell:has(.quick-create-panel) {
   background:
@@ -9747,10 +9709,97 @@ body {
   resize: vertical;
   width: 100%;
 }
-.quick-create-composer .poster-template-panel {
-  margin: 4px 0 14px;
-  max-height: 520px;
+.quick-create-poster-overlay {
+  align-items: center;
+  background: color-mix(in srgb, #0b1220 62%, transparent);
+  backdrop-filter: blur(8px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1200;
+}
+.quick-create-poster-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 20px;
+  box-shadow: 0 28px 80px #00000040;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: min(88vh, 820px);
+  overflow: hidden;
+  width: min(920px, 100%);
+}
+.quick-create-poster-modal-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+.quick-create-poster-modal-header > div {
+  display: grid;
+  gap: 3px;
+}
+.quick-create-poster-modal-header strong {
+  color: var(--fg-primary);
+  font-size: 16px;
+}
+.quick-create-poster-modal-header span {
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
+.quick-create-poster-modal-close {
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+.quick-create-poster-modal-close:hover,
+.quick-create-poster-modal-close:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.quick-create-poster-modal .poster-template-panel {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
   overflow: auto;
+  padding: 18px;
+}
+.quick-create-poster-modal .poster-template-brief,
+.quick-create-poster-modal .poster-template-fields textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 92px;
+  padding: 9px 10px;
+  resize: vertical;
+  width: 100%;
+}
+.quick-create-poster-modal .poster-template-fields textarea {
+  min-height: 62px;
+}
+.quick-create-poster-modal .poster-template-brief:focus,
+.quick-create-poster-modal .poster-template-fields textarea:focus {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  outline: none;
 }
 .project-section-heading {
   align-items: baseline;
@@ -9856,8 +9905,37 @@ body {
     flex-direction: column;
     gap: 3px;
   }
-  .quick-create-composer .poster-template-panel {
+  .quick-create-poster-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+  .quick-create-poster-modal {
+    border-radius: 0;
+    height: 100%;
     max-height: none;
+    width: 100%;
+  }
+  .quick-create-poster-modal-header {
+    padding: 13px 14px;
+  }
+  .quick-create-poster-modal-header span {
+    display: none;
+  }
+  .quick-create-poster-modal .poster-template-panel {
+    padding: 14px;
+  }
+  .quick-create-poster-modal .poster-template-style-list {
+    grid-template-columns: 1fr;
+  }
+  .quick-create-poster-modal .poster-template-fields {
+    grid-template-columns: 1fr;
+  }
+  .quick-create-poster-modal .poster-template-fields label.wide {
+    grid-column: auto;
+  }
+  .quick-create-poster-modal .poster-template-footer {
+    align-items: stretch;
+    flex-direction: column;
   }
   .project-grid {
     grid-template-columns: 1fr;
@@ -9865,7 +9943,8 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .quick-create-submit,
-  .quick-create-mode {
+  .quick-create-mode,
+  .quick-create-poster-modal-close {
     transition: none;
   }
 }
@@ -17762,40 +17841,32 @@ body {
 }
 
 /* BeeMax commercial poster template form */
-.image-composer-mode-switch {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 9px;
-  display: grid;
-  gap: 3px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 10px;
-  padding: 3px;
-}
-.image-composer-mode {
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: var(--fg-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  min-height: 34px;
-  padding: 6px 10px;
-}
-.image-composer-mode:hover,
-.image-composer-mode:focus-visible {
-  color: var(--fg-primary);
-  outline: none;
-}
-.image-composer-mode.active {
-  background: var(--accent);
-  color: var(--fg-inverse);
-}
-.image-professional-fields {
+.image-creation-fields {
   display: grid;
   gap: 10px;
+}
+.image-composer-poster-material {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.image-composer-poster-material > summary {
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style-position: inside;
+  padding: 10px 11px;
+}
+.image-composer-poster-material[open] > summary {
+  border-bottom: 1px solid var(--border-default);
+  color: var(--fg-primary);
+}
+.image-composer-poster-material .poster-template-panel {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
 }
 .poster-template-panel {
   background: color-mix(in srgb, var(--bg-elevated) 92%, var(--accent) 8%);

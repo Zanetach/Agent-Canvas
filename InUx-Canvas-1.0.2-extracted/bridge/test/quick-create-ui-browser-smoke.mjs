@@ -167,15 +167,54 @@ try {
     `document.querySelector('.quick-create-template-card')?.click()`,
   );
   await wait(100);
-  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-panel .poster-template-panel'))`), true);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-overlay'))`), true);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal[role="dialog"][aria-modal="true"]'))`), true);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-composer .poster-template-panel'))`), false);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-assets'))`), false);
   assert.equal(
-    await evaluate(`document.querySelectorAll('.quick-create-panel .poster-template-fields input, .quick-create-panel .poster-template-fields textarea').length`),
+    await evaluate(`document.querySelectorAll('.quick-create-poster-modal .poster-template-fields input, .quick-create-poster-modal .poster-template-fields textarea').length`),
     10,
   );
+
+  await evaluate(`(() => {
+    const field = document.querySelector('.quick-create-poster-modal .poster-template-brief');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '为科技品牌制作一张蓝色产品发布海报');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await evaluate(`document.querySelector('.quick-create-poster-modal .poster-template-apply')?.click()`);
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait(100);
+    if (!(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`))) break;
+  }
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`), false);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
+    /科技品牌.*蓝色产品发布海报/,
+    "applying a commercial poster should backfill the homepage prompt and close the modal",
+  );
+
+  await evaluate(`document.querySelector('.quick-create-template-card')?.click()`);
+  await wait(100);
+  await evaluate(`document.querySelector('[aria-label="关闭商业海报弹窗"]')?.click()`);
+  await wait(100);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`), false);
+
+  await evaluate(`document.querySelector('.quick-create-template-card')?.click()`);
+  await wait(100);
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await wait(100);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`), false);
 
   await evaluate(
     `[...document.querySelectorAll('.quick-create-mode')].find((button) => button.innerText === '直接生成')?.click()`,
   );
+  await evaluate(`(() => {
+    const field = document.querySelector('.quick-create-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
   await evaluate(`document.querySelector('.quick-create-submit')?.click()`);
   await wait(100);
   assert.match(await evaluate(`document.querySelector('.quick-create-message')?.innerText || ''`), /请输入生成内容/);
@@ -289,27 +328,39 @@ try {
   assert.equal(
     await evaluate(`Boolean(document.querySelector('.canvas-image-assistant'))`),
     true,
-    "canvas image assistant should be visible",
+    "unified image creator should be visible",
   );
-  assert.deepEqual(
-    JSON.parse(
-      await evaluate(`JSON.stringify([...document.querySelectorAll('.canvas-image-assistant-step-title')].map((node) => node.textContent.trim()))`),
-    ),
-    ["描述想生成的图片", "添加参考图（可选）", "开始生成"],
+  assert.equal(await evaluate(`document.querySelectorAll('.canvas-image-assistant-step-title').length`), 0);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-professional'))`), false);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-form'))`), true);
+  await wait(50);
+  assert.match(
+    await evaluate(`document.querySelector('.canvas-image-assistant-prompt')?.value || ''`),
+    /科技蓝机械蜜蜂/,
+    "the homepage prompt should carry into the unified Canvas creator",
+  );
+  assert.notEqual(
+    await evaluate(`document.querySelector('.canvas-image-assistant-header h2')?.textContent.trim()`),
+    "创建你的图片",
+    "an auto-running homepage request should not look like a fresh empty workflow",
   );
   assert.equal(
     await evaluate(`Boolean(document.querySelector('.canvas-composer-dock'))`),
     false,
-    "advanced node composer should stay hidden while the beginner assistant is active",
-  );
-  assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-professional'))`),
-    true,
-    "beginner assistant should expose an explicit professional mode entry",
+    "node editor should stay hidden until a result is selected",
   );
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 第 1/3 步",
+    "图片创作",
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.disabled`),
+    true,
+    "the unified creator should prevent duplicate submission while homepage generation is running",
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.textContent.trim()`),
+    "正在生成…",
   );
 
   let generated = false;
@@ -322,11 +373,24 @@ try {
   assert.match(await evaluate(`document.querySelector('.canvas-title-input')?.value || ''`), /科技蓝机械蜜蜂/);
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 已有结果",
+    "图片创作",
   );
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-header h2')?.textContent.trim()`),
     "继续创作",
+  );
+
+  await evaluate(`(() => {
+    const field = document.querySelector('.canvas-image-assistant-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(100);
+  assert.equal(
+    await evaluate(`document.querySelector('.canvas-image-assistant-prompt')?.value`),
+    "",
+    "users should be able to clear the injected homepage prompt",
   );
 
   const imageCountBeforeTextOnly = await evaluate(
@@ -341,7 +405,7 @@ try {
   await wait(100);
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 已有结果",
+    "图片创作",
   );
   await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
   let textOnlyGenerated = false;
@@ -387,7 +451,7 @@ try {
   await wait(100);
   assert.equal(
     await evaluate(`document.querySelector('.canvas-image-assistant-progress')?.textContent.trim()`),
-    "图片创作 · 已有结果",
+    "图片创作",
   );
   await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
   let assistantGenerated = false;
@@ -414,46 +478,6 @@ try {
     "removing the optional reference should remove its Canvas source node",
   );
 
-  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
-  let explicitProfessionalModeReady = false;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await wait(100);
-    explicitProfessionalModeReady = await evaluate(
-      `Boolean(document.querySelector('.canvas-composer-dock')) && Boolean(document.querySelector('.canvas-image-assistant')?.hidden)`,
-    );
-    if (explicitProfessionalModeReady) break;
-  }
-  assert.equal(explicitProfessionalModeReady, true, "professional mode button should open the advanced composer");
-  assert.match(
-    await evaluate(`document.querySelector('.canvas-composer-dock .image-mention-editor')?.textContent || ''`),
-    /保持构图，改成科技蓝机械蜜蜂海报/,
-    "professional mode should receive the beginner assistant draft",
-  );
-  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-expand-btn')?.click()`);
-  await wait(100);
-  assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-processor-expanded-backdrop'))`),
-    true,
-    "advanced composer should expand into the professional editor",
-  );
-  await evaluate(`document.querySelector('.canvas-processor-expanded-close')?.click()`);
-  await wait(100);
-  assert.equal(
-    await evaluate(`!document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`),
-    true,
-    "closing the expanded advanced composer should restore the beginner assistant",
-  );
-  assert.equal(
-    await evaluate(`document.activeElement === document.querySelector('.canvas-image-assistant-professional')`),
-    true,
-    "closing professional mode should restore focus to its entry button",
-  );
-  assert.equal(
-    await evaluate(`document.querySelectorAll('.react-flow__node.selected').length`),
-    0,
-    "closing professional mode should clear the active node selection",
-  );
-
   await evaluate(`(() => {
     const result = [...document.querySelectorAll('.result-node')]
       .find((node) => node.textContent.includes('生成图片'))
@@ -468,18 +492,33 @@ try {
     );
     if (advancedModeReady) break;
   }
-  assert.equal(advancedModeReady, true, "selecting a result should switch from the beginner assistant to the advanced composer");
+  assert.equal(advancedModeReady, true, "selecting a result should open its node editor");
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-composer-mode-switch'))`),
+    false,
+    "the node editor should not reintroduce simple and professional modes",
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-creation-fields'))`),
+    true,
+    "the single node editor should retain image prompt controls",
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-composer-poster-material'))`),
+    true,
+    "commercial poster generation should remain available as an optional material",
+  );
 
   await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
-  let beginnerModeRestored = false;
+  let unifiedCreatorRestored = false;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await wait(100);
-    beginnerModeRestored = await evaluate(
+    unifiedCreatorRestored = await evaluate(
       `!document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`,
     );
-    if (beginnerModeRestored) break;
+    if (unifiedCreatorRestored) break;
   }
-  assert.equal(beginnerModeRestored, true, "closing the compact advanced composer should restore the beginner assistant");
+  assert.equal(unifiedCreatorRestored, true, "closing the node editor should restore the unified image creator");
   assert.equal(
     await evaluate(`document.querySelectorAll('.react-flow__node.selected').length`),
     0,
@@ -498,19 +537,15 @@ try {
     if (emptyCanvasReady) break;
   }
   assert.equal(emptyCanvasReady, true, "new blank Canvas should not precreate image nodes");
-  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
-  await wait(100);
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock'))`),
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-form'))`),
     true,
-    "professional mode should work on an empty Canvas",
+    "the same unified creator should work on an empty Canvas",
   );
-  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
-  await wait(100);
   assert.equal(
-    await evaluate(`document.querySelectorAll('.result-node').length`),
-    0,
-    "closing an untouched professional placeholder should restore the empty Canvas",
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-professional'))`),
+    false,
+    "the unified creator should not expose a professional-mode switch",
   );
   await evaluate(`(() => {
     const select = document.querySelector('.canvas-image-assistant-settings [aria-label="图片数量"]');
@@ -518,14 +553,10 @@ try {
     descriptor.set.call(select, '2');
     select.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
-  await evaluate(`document.querySelector('.canvas-image-assistant-professional')?.click()`);
-  await wait(100);
-  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
-  await wait(100);
   assert.equal(
     await evaluate(`document.querySelectorAll('.result-node').length`),
-    1,
-    "closing a configured professional placeholder should preserve the user's settings",
+    0,
+    "changing unified generation settings should not create placeholder nodes",
   );
 } finally {
   socket.close();
