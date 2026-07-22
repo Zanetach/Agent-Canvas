@@ -150,7 +150,7 @@ try {
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-template-card')?.innerText || ''`),
-    /商业海报/,
+    /商业海报[\s\S]*基于主描述选择风格，应用后回填[\s\S]*选择风格/,
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-mode-guide')?.innerText || ''`),
@@ -163,9 +163,17 @@ try {
     ["AI 服务", "生成模型", "生成数量", "画面比例", "分辨率"],
   );
 
-  await evaluate(
-    `document.querySelector('.quick-create-template-card')?.click()`,
-  );
+  await evaluate(`(() => {
+    const field = document.querySelector('.quick-create-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '为科技品牌制作一张蓝色产品发布海报');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    const ratio = document.querySelector('[aria-label="画面比例"]');
+    const selectDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    selectDescriptor.set.call(ratio, '16:9');
+    ratio.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await evaluate(`document.querySelector('.quick-create-template-card')?.click()`);
   await wait(100);
   assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-overlay'))`), true);
   assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal[role="dialog"][aria-modal="true"]'))`), true);
@@ -175,19 +183,27 @@ try {
     await evaluate(`document.querySelectorAll('.quick-create-poster-modal .poster-template-fields input, .quick-create-poster-modal .poster-template-fields textarea').length`),
     10,
   );
-
-  await evaluate(`(() => {
-    const field = document.querySelector('.quick-create-poster-modal .poster-template-brief');
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-    descriptor.set.call(field, '为科技品牌制作一张蓝色产品发布海报');
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal .poster-template-brief'))`),
+    false,
+    "commercial poster material should reuse the homepage prompt",
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('.quick-create-poster-modal .poster-template-apply')?.innerText`),
+    '应用海报模板',
+  );
   await evaluate(`document.querySelector('.quick-create-poster-modal .poster-template-apply')?.click()`);
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await wait(100);
     if (!(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`))) break;
   }
   assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-poster-modal'))`), false);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.quick-create-panel'))`), true);
+  assert.equal(await evaluate(`document.querySelector('[aria-label="画面比例"]')?.value`), '3:4');
+  assert.equal(
+    await evaluate(`document.activeElement === document.querySelector('.quick-create-prompt')`),
+    true,
+  );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
     /科技品牌.*蓝色产品发布海报/,

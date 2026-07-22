@@ -28947,7 +28947,6 @@ function PosterTemplatePanel_({
   onUpload: r,
   onApply: i,
   briefValue: externalBrief = null,
-  useApplyCopy = !1,
 }) {
   let a = (0, v.useMemo)(
       () =>
@@ -29131,14 +29130,14 @@ function PosterTemplatePanel_({
             disabled: f === `loading`,
             children:
               f === `loading`
-                ? useApplyCopy
+                ? usesExternalBrief
                   ? `正在应用...`
                   : `正在生成...`
                 : f === `success`
-                  ? useApplyCopy
+                  ? usesExternalBrief
                     ? `模板已应用`
                     : `已提交生成`
-                  : useApplyCopy
+                  : usesExternalBrief
                     ? `应用海报模板`
                     : `立即生成`,
           }),
@@ -53146,7 +53145,6 @@ function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady
           (0, Q.jsx)(PosterTemplatePanel_, {
             styles: posterStyles,
             briefValue: prompt,
-            useApplyCopy: !0,
             referenceCount: asset ? 1 : 0,
             uploadDisabled: status === `uploading` || isGenerating,
             onUpload: () => fileInputRef.current?.click(),
@@ -62715,9 +62713,9 @@ var quickCreateModes_ = Object.freeze([
     label: `商业海报`,
     icon: `apps`,
     group: `template`,
-    description: `选择海报风格并填写结构化内容，快速生成中文商业视觉。`,
-    materialDescription: `选择海报风格，填写内容后快速生成`,
-    materialAction: `使用素材 →`,
+    description: `基于主描述选择海报风格，应用模板后再统一生成。`,
+    materialDescription: `基于主描述选择风格，应用后回填`,
+    materialAction: `选择风格 →`,
   },
   {
     id: `reference`,
@@ -63388,7 +63386,7 @@ function QuickCreatePanel_({
                         children: `商业海报素材`,
                       }),
                       (0, Q.jsx)(`span`, {
-                        children: `选择风格并填写内容，完成后回填到主输入框`,
+                        children: `使用主输入框描述，选择风格后回填模板 Prompt`,
                       }),
                     ],
                   }),
@@ -63404,6 +63402,7 @@ function QuickCreatePanel_({
               }),
               (0, Q.jsx)(PosterTemplatePanel_, {
                 styles: n,
+                briefValue: s,
                 referenceCount: d.length,
                 onUpload: () => M.current?.click(),
                 onApply: (e) => (H(e), quickClosePosterModal(!0)),
