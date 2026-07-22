@@ -46,6 +46,14 @@ async function evaluate(expression) {
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+async function waitFor(expression, attempts = 40) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await wait(100);
+    if (await evaluate(expression)) return true;
+  }
+  return false;
+}
+
 try {
   await wait(600);
   await evaluate(`document.querySelector('.new-project-card')?.click()`);
@@ -87,7 +95,7 @@ try {
   await wait(100);
 
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '应用海报模板')?.click()`,
   );
   await wait(100);
   const validation = await evaluate(
@@ -108,7 +116,7 @@ try {
   })()`);
   await wait(100);
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '应用海报模板')?.click()`,
   );
   await wait(100);
   assert.match(
@@ -124,14 +132,34 @@ try {
   })()`);
   await wait(100);
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '应用海报模板')?.click()`,
   );
-  let posterGenerated = false;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    await wait(100);
-    posterGenerated = await evaluate(`Boolean(document.querySelector('.result-image-node img'))`);
-    if (posterGenerated) break;
-  }
+  const templateApplied = await waitFor(
+    `document.querySelector('.poster-template-apply')?.innerText === '模板已应用'`,
+  );
+  assert.equal(templateApplied, true);
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.result-image-node img'))`),
+    false,
+  );
+  const appliedPrompt = await evaluate(
+    `document.querySelector('.canvas-image-assistant-prompt')?.value || ''`,
+  );
+  assert.ok(appliedPrompt.length > 100);
+  assert.match(appliedPrompt, /2026年度增长报告/);
+  assert.match(appliedPrompt, /翡翠绿和青绿色单色体系/);
+  assert.equal(
+    await evaluate(`document.querySelector('select[aria-label="图片比例"]')?.value`),
+    '3:4',
+  );
+
+  await evaluate(
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '开始生成')?.click()`,
+  );
+  const posterGenerated = await waitFor(
+    `Boolean(document.querySelector('.result-image-node img'))`,
+    80,
+  );
 
   const applied = await evaluate(`JSON.stringify({
     separateComposer: Boolean(document.querySelector('.canvas-composer-dock')),

@@ -28947,6 +28947,7 @@ function PosterTemplatePanel_({
   onUpload: r,
   onApply: i,
   briefValue: externalBrief = null,
+  useApplyCopy = !1,
 }) {
   let a = (0, v.useMemo)(
       () =>
@@ -29130,10 +29131,16 @@ function PosterTemplatePanel_({
             disabled: f === `loading`,
             children:
               f === `loading`
-                ? `正在生成...`
+                ? useApplyCopy
+                  ? `正在应用...`
+                  : `正在生成...`
                 : f === `success`
-                  ? `已提交生成`
-                  : `立即生成`,
+                  ? useApplyCopy
+                    ? `模板已应用`
+                    : `已提交生成`
+                  : useApplyCopy
+                    ? `应用海报模板`
+                    : `立即生成`,
           }),
         ],
       }),
@@ -53139,6 +53146,7 @@ function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady
           (0, Q.jsx)(PosterTemplatePanel_, {
             styles: posterStyles,
             briefValue: prompt,
+            useApplyCopy: !0,
             referenceCount: asset ? 1 : 0,
             uploadDisabled: status === `uploading` || isGenerating,
             onUpload: () => fileInputRef.current?.click(),
@@ -53146,10 +53154,6 @@ function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady
               let posterPrompt = payload.prompt || ``,
                 posterRatio = payload.aspect_ratio || `3:4`;
               (setPrompt(posterPrompt), setRatio(posterRatio));
-              await handleGenerate({
-                promptOverride: posterPrompt,
-                ratioOverride: posterRatio,
-              });
             },
           }),
         ],
