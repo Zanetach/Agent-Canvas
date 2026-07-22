@@ -70,7 +70,7 @@ try {
   })`);
   const initialState = JSON.parse(initial);
   assert.equal(initialState.visible, true);
-  assert.equal(initialState.brief, true);
+  assert.equal(initialState.brief, false);
   assert.equal(initialState.modeSwitch, false);
   assert.equal(initialState.separateComposer, false);
   assert.equal(initialState.unifiedCreator, true);
@@ -93,10 +93,31 @@ try {
   const validation = await evaluate(
     `document.querySelector('.poster-template-message')?.innerText || ''`,
   );
-  assert.match(validation, /请描述你想制作的海报/);
+  assert.match(validation, /请先在上方填写图片或海报描述/);
 
   await evaluate(`(() => {
-    const field = document.querySelector('.poster-template-brief');
+    const fields = [...document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea')];
+    for (const field of fields) {
+      const prototype = field instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+      descriptor.set.call(field, '示例海报信息');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  })()`);
+  await wait(100);
+  await evaluate(
+    `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
+  );
+  await wait(100);
+  assert.match(
+    await evaluate(`document.querySelector('.poster-template-message')?.innerText || ''`),
+    /请先在上方填写图片或海报描述/,
+  );
+
+  await evaluate(`(() => {
+    const field = document.querySelector('.canvas-image-assistant-prompt');
     const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
     descriptor.set.call(field, '为宏利示例制作一张保险年度业绩海报，主标题为2026年度增长报告，核心数据312.9亿元，同比增长39%，行动号召是查看完整报告。');
     field.dispatchEvent(new Event('input', { bubbles: true }));

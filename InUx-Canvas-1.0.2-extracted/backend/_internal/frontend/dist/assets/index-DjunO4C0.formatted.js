@@ -28946,6 +28946,7 @@ function PosterTemplatePanel_({
   uploadDisabled: n = !1,
   onUpload: r,
   onApply: i,
+  briefValue: externalBrief = null,
 }) {
   let a = (0, v.useMemo)(
       () =>
@@ -28960,7 +28961,12 @@ function PosterTemplatePanel_({
     [u, d] = (0, v.useState)([]),
     [f, p] = (0, v.useState)(`idle`),
     [m, h] = (0, v.useState)(``),
-    g = o || a[0]?.id || ``;
+    g = o || a[0]?.id || ``,
+    usesExternalBrief = externalBrief !== null;
+  (0, v.useEffect)(() => {
+    externalBrief !== null &&
+      (h(``), f === `error` && p(`idle`));
+  }, [externalBrief]);
   if (a.length === 0) return null;
   let _ = (e, t) => {
       (l((n) => ({ ...n, [e]: t })),
@@ -28969,11 +28975,15 @@ function PosterTemplatePanel_({
         f === `success` && p(`idle`));
     },
     y = async () => {
-      let e = brief.trim(),
+      let e = String(externalBrief ?? brief).trim(),
         t = posterContentFields_.filter((e) => String(c[e.key] || ``).trim()),
         n = posterContentFields_
           .filter((e) => !String(c[e.key] || ``).trim())
           .map((e) => e.key);
+      if (usesExternalBrief && !e) {
+        (d([]), h(`请先在上方填写图片或海报描述`), p(`error`));
+        return;
+      }
       if (!e && t.length === 0) {
         (d([]), h(`请描述你想制作的海报`), p(`error`));
         return;
@@ -29008,7 +29018,9 @@ function PosterTemplatePanel_({
                 children: `快速生成商业海报`,
               }),
               (0, Q.jsx)(`span`, {
-                children: `选择风格，用一句话描述内容`,
+                children: usesExternalBrief
+                  ? `使用上方描述，选择一种海报风格`
+                  : `选择风格，用一句话描述内容`,
               }),
             ],
           }),
@@ -29040,21 +29052,22 @@ function PosterTemplatePanel_({
           ),
         ),
       }),
-      (0, Q.jsxs)(`label`, {
-        className: `poster-template-brief-field`,
-        children: [
-          (0, Q.jsx)(`span`, { children: `描述你要做的海报` }),
-          (0, Q.jsx)(`textarea`, {
-            className: `poster-template-brief`,
-            value: brief,
-            onChange: (e) => {
-              (setBrief(e.target.value), h(``), f === `success` && p(`idle`));
-            },
-            placeholder: `例如：为宏利制作保险年度业绩海报，主标题为 2026 年度增长报告，核心数据 312.9 亿元，同比增长 39%。`,
-            rows: 4,
-          }),
-        ],
-      }),
+      !usesExternalBrief &&
+        (0, Q.jsxs)(`label`, {
+          className: `poster-template-brief-field`,
+          children: [
+            (0, Q.jsx)(`span`, { children: `描述你要做的海报` }),
+            (0, Q.jsx)(`textarea`, {
+              className: `poster-template-brief`,
+              value: brief,
+              onChange: (e) => {
+                (setBrief(e.target.value), h(``), f === `success` && p(`idle`));
+              },
+              placeholder: `例如：为宏利制作保险年度业绩海报，主标题为 2026 年度增长报告，核心数据 312.9 亿元，同比增长 39%。`,
+              rows: 4,
+            }),
+          ],
+        }),
       (0, Q.jsxs)(`details`, {
         className: `poster-template-advanced`,
         children: [
@@ -53039,12 +53052,12 @@ function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady
             className: `canvas-image-assistant-field-heading`,
             children: [
               (0, Q.jsx)(`strong`, {
-                children: hasResult ? `描述下一张图片` : `描述想生成的图片`,
+                children: hasResult ? `描述下一张图片或海报` : `描述想生成的图片或海报`,
               }),
               (0, Q.jsx)(`span`, { children: `必填` }),
             ],
           }),
-          (0, Q.jsx)(`p`, { children: `用一句话描述主体、场景、风格或用途` }),
+          (0, Q.jsx)(`p`, { children: `写清主体、用途、标题或核心信息，只需填写一次` }),
           (0, Q.jsx)(`textarea`, {
             className: `canvas-image-assistant-prompt`,
             value: prompt,
@@ -53125,6 +53138,7 @@ function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady
           (0, Q.jsx)(`summary`, { children: `商业海报素材（可选）` }),
           (0, Q.jsx)(PosterTemplatePanel_, {
             styles: posterStyles,
+            briefValue: prompt,
             referenceCount: asset ? 1 : 0,
             uploadDisabled: status === `uploading` || isGenerating,
             onUpload: () => fileInputRef.current?.click(),
