@@ -169,6 +169,37 @@ try {
   assert.equal(posterGenerated, true);
   assert.equal(appliedState.separateComposer, false);
   assert.equal(appliedState.unifiedCreator, true);
+
+  await evaluate(`(() => {
+    const generatedNode = [...document.querySelectorAll('.react-flow__node')]
+      .find((node) => node.querySelector('.result-image-node img'));
+    generatedNode?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  })()`);
+  assert.equal(
+    await waitFor(`Boolean(document.querySelector('.result-image-portal-toolbar'))`),
+    true,
+    'selected generated image node should show its image action toolbar',
+  );
+  const selectedToolbar = JSON.parse(
+    await evaluate(`JSON.stringify({
+      visible: Boolean(document.querySelector('.result-image-portal-toolbar')),
+      sidebarVisible: !document.querySelector('.canvas-image-assistant')?.hidden,
+      actions: [...document.querySelectorAll('.result-image-portal-toolbar button')]
+        .map((button) => button.getAttribute('aria-label'))
+    })`),
+  );
+  assert.equal(selectedToolbar.visible, true);
+  assert.equal(selectedToolbar.sidebarVisible, true);
+  assert.deepEqual(selectedToolbar.actions, [
+    '下载',
+    '裁剪',
+    '收藏',
+    '图生图',
+    '提示词',
+    '标记',
+    '重新上传',
+    '删除节点',
+  ]);
 } finally {
   socket.close();
 }

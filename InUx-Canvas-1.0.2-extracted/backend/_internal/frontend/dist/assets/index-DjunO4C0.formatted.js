@@ -31998,7 +31998,8 @@ function py({ id: e, selected: t, data: n }) {
     [He, Ue] = (0, v.useState)({ imageUrl: ``, images: [], index: 0 }),
     [We, Ge] = (0, v.useState)({ width: 0, height: 0 }),
     [Ke, qe] = (0, v.useState)(ly);
-  iv(G, { enabled: S || (f && Re && !t) });
+  let shouldShowImageToolbar = Re || (t && !w);
+  iv(G, { enabled: S || (f && shouldShowImageToolbar) });
   let Je = (0, v.useMemo)(() => dy(d), [d]),
     Ye = Je?.cssValue || `1 / 1`,
     Xe = Je?.ratio || 1,
@@ -33092,7 +33093,9 @@ function py({ id: e, selected: t, data: n }) {
                                           onAction: n?.onImageAction,
                                           onUpload: mt,
                                           onDelete: () => n?.onDeleteNode?.(e),
-                                          forceVisible: a,
+                                          forceVisible:
+                                            a ||
+                                            (i && shouldShowImageToolbar),
                                           onToolbarPointerEnter: () => wt(r),
                                           onToolbarPointerLeave: () => Tt(r),
                                           portalToolbar: !0,
@@ -33172,7 +33175,7 @@ function py({ id: e, selected: t, data: n }) {
                                   onAction: n?.onImageAction,
                                   onUpload: mt,
                                   onDelete: () => n?.onDeleteNode?.(e),
-                                  forceVisible: Re && !t,
+                                  forceVisible: shouldShowImageToolbar,
                                   onToolbarPointerEnter: lt,
                                   onToolbarPointerLeave: ut,
                                   portalToolbar: !0,
@@ -33220,7 +33223,7 @@ function py({ id: e, selected: t, data: n }) {
                                   onAction: n?.onImageAction,
                                   onUpload: mt,
                                   onDelete: () => n?.onDeleteNode?.(e),
-                                  forceVisible: Re && !t,
+                                  forceVisible: shouldShowImageToolbar,
                                   onToolbarPointerEnter: lt,
                                   onToolbarPointerLeave: ut,
                                   portalToolbar: !0,
@@ -33271,7 +33274,7 @@ function py({ id: e, selected: t, data: n }) {
                                     sourceType: `result`,
                                     onUpload: mt,
                                     onDelete: () => n?.onDeleteNode?.(e),
-                                    forceVisible: Re && !t,
+                                    forceVisible: shouldShowImageToolbar,
                                     onToolbarPointerEnter: lt,
                                     onToolbarPointerLeave: ut,
                                     portalToolbar: !0,
