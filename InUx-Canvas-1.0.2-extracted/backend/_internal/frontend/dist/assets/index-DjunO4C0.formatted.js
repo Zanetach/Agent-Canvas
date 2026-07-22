@@ -33244,7 +33244,7 @@ function py({ id: e, selected: t, data: n }) {
                                 children: [
                                   (0, Q.jsx)(uy, {}),
                                   (0, Q.jsx)(`span`, {
-                                    children: `点击节点打开生成器，或从上方工具栏上传图片`,
+                                    children: `点击节点，在右侧描述并生成；也可从上方工具栏上传图片`,
                                   }),
                                   (0, Q.jsx)(jv, {
                                     imageUrl: ``,
@@ -52889,7 +52889,25 @@ function assistantSourceNode_(node, asset, ratio) {
     },
   };
 }
-function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onGenerate, initialPrompt = ``, hasResult = !1, isGenerating = !1, hidden = !1 }) {
+function isUnifiedImageResult_(node) {
+  return (
+    node?.type === `result` &&
+    node.data?.resultType === `generateImage` &&
+    node.data?.imageSource !== `upload`
+  );
+}
+function isImageReferenceEdge_(edge, targetId, nodes) {
+  if (edge?.target !== targetId) return !1;
+  let sourceNode = nodes.find((node) => node.id === edge.source);
+  return (
+    ED({
+      generatorType: `generateImage`,
+      sourceNode,
+      sourceHandle: edge.sourceHandle || null,
+    }).length > 0
+  );
+}
+function CanvasImageAssistant_({ providers = [], posterStyles = [], onAssetReady, onAssetClear, onGenerate, targetId = null, targetSettings = null, targetReferenceUrls = [], initialPrompt = ``, hasResult = !1, isGenerating = !1, hidden = !1 }) {
   let [asset, setAsset] = (0, v.useState)(null),
     [prompt, setPrompt] = (0, v.useState)(``),
     [status, setStatus] = (0, v.useState)(`idle`),
@@ -52900,7 +52918,7 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
     [resolution, setResolution] = (0, v.useState)(`1k`),
     [count, setCount] = (0, v.useState)(1),
     fileInputRef = (0, v.useRef)(null),
-    injectedPromptRef = (0, v.useRef)(``),
+    injectedTargetRef = (0, v.useRef)(null),
     imageProviders = (0, v.useMemo)(() => P_(providers, [], `image`), [providers]),
     activeProvider = imageProviders.find((provider) => provider.id === providerId) || imageProviders[0] || null,
     availableModels = activeProvider?.models || [],
@@ -52912,8 +52930,26 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
       activeModel && activeModel !== model && setModel(activeModel);
     }, [activeModel, model]),
     (0, v.useEffect)(() => {
-      initialPrompt && initialPrompt !== injectedPromptRef.current && ((injectedPromptRef.current = initialPrompt), setPrompt(initialPrompt));
-    }, [initialPrompt]));
+      let previousTargetId = injectedTargetRef.current;
+      targetId !== previousTargetId &&
+        ((injectedTargetRef.current = targetId),
+        targetReferenceUrls[0]
+          ? setAsset({
+              url: targetReferenceUrls[0],
+              name: `已连接参考图`,
+              referenceCount: targetReferenceUrls.length,
+              isExistingReference: !0,
+            })
+          : previousTargetId !== null && setAsset(null),
+        setPrompt(initialPrompt || ``),
+        setProviderId(targetSettings?.providerId || ``),
+        setModel(targetSettings?.model || ``),
+        setRatio(targetSettings?.ratio || `3:4`),
+        setResolution(targetSettings?.resolution || `1k`),
+        setCount(targetSettings?.count || 1),
+        setStatus(`idle`),
+        setMessage(``));
+    }, [targetId]));
   let uploadAsset = async (file) => {
       if (!file) {
         (setStatus(`error`), setMessage(f_()));
@@ -52942,9 +52978,11 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
     handleClearAsset = () => {
       (setAsset(null), setStatus(`idle`), setMessage(``), onAssetClear?.());
     },
-    handleGenerate = async () => {
+    handleGenerate = async ({ promptOverride = null, ratioOverride = null } = {}) => {
       if (isGenerating || status === `loading`) return;
-      if (!prompt.trim()) {
+      let requestedPrompt = (promptOverride ?? prompt).trim(),
+        requestedRatio = ratioOverride || ratio;
+      if (!requestedPrompt) {
         (setStatus(`error`), setMessage(`请先描述想生成的图片`));
         return;
       }
@@ -52955,11 +52993,11 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
       (setStatus(`loading`), setMessage(`正在创建节点并生成图片…`));
       try {
         await onGenerate?.({
-          asset,
-          prompt: prompt.trim(),
+          asset: asset?.isExistingReference ? null : asset,
+          prompt: requestedPrompt,
           apiId: activeProvider.id,
           model: activeModel,
-          ratio,
+          ratio: requestedRatio,
           resolution,
           count,
         });
@@ -53043,7 +53081,12 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
             children: asset
               ? [
                   (0, Q.jsx)(`img`, { src: asset.url, alt: `已上传参考图`, key: `preview` }),
-                  (0, Q.jsx)(`span`, { key: `replace`, children: `更换参考图` }),
+                  (0, Q.jsx)(`span`, {
+                    key: `replace`,
+                    children: asset.isExistingReference
+                      ? `更换参考图（已连接 ${asset.referenceCount || 1} 张）`
+                      : `更换参考图`,
+                  }),
                 ]
               : [
                   (0, Q.jsx)($, { name: `upload`, size: 24, key: `icon` }),
@@ -53067,7 +53110,7 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
           (0, Q.jsxs)(`button`, {
             type: `button`,
             className: `canvas-image-assistant-generate`,
-            onClick: handleGenerate,
+            onClick: () => handleGenerate(),
             disabled: isGenerating || status === `loading`,
             children: [
               (0, Q.jsx)($, { name: isGenerating || status === `loading` ? `loader` : `sparkles`, size: 18 }),
@@ -53076,6 +53119,27 @@ function CanvasImageAssistant_({ providers = [], onAssetReady, onAssetClear, onG
           }),
       }),
       message && (0, Q.jsx)(`p`, { className: `canvas-image-assistant-message ${status}`, role: status === `error` ? `alert` : `status`, children: message }),
+      (0, Q.jsxs)(`details`, {
+        className: `canvas-image-assistant-material image-composer-poster-material`,
+        children: [
+          (0, Q.jsx)(`summary`, { children: `商业海报素材（可选）` }),
+          (0, Q.jsx)(PosterTemplatePanel_, {
+            styles: posterStyles,
+            referenceCount: asset ? 1 : 0,
+            uploadDisabled: status === `uploading` || isGenerating,
+            onUpload: () => fileInputRef.current?.click(),
+            onApply: async (payload) => {
+              let posterPrompt = payload.prompt || ``,
+                posterRatio = payload.aspect_ratio || `3:4`;
+              (setPrompt(posterPrompt), setRatio(posterRatio));
+              await handleGenerate({
+                promptOverride: posterPrompt,
+                ratioOverride: posterRatio,
+              });
+            },
+          }),
+        ],
+      }),
       (0, Q.jsxs)(`details`, {
         className: `canvas-image-assistant-settings`,
         children: [
@@ -54500,14 +54564,18 @@ function Rk({
                 e.id === t.id ? { ...e, selected: !0 } : { ...e, selected: !1 },
               ),
             );
-          (Vt(
-            t.type === `result` &&
-              t.data?.imageSource !== `upload` &&
-              t.data?.videoSource !== `upload` &&
-              t.data?.audioSource !== `upload`
-              ? t.id
-              : null,
-          ),
+          (isUnifiedImageResult_(t)
+            ? ((assistantResultRef.current = t.id),
+              (assistantSourceRef.current = null),
+              Vt(null))
+            : Vt(
+                t.type === `result` &&
+                  t.data?.imageSource !== `upload` &&
+                  t.data?.videoSource !== `upload` &&
+                  t.data?.audioSource !== `upload`
+                  ? t.id
+                  : null,
+              ),
             Xe(t.type === `smartSplitter` ? t.id : null),
             Ut(t.id),
             $t(t.id));
@@ -58134,12 +58202,17 @@ function Rk({
         let i = Ik(),
           o = `result_${i}`,
           s = `generator_${i}`,
+          shouldActivateNode = r.activate ?? !0,
           c = r.sourceHandle || null,
           l = n ? Y.current.find((e) => e.id === n) : null,
           u =
             r.connectedImages ??
             ED({ generatorType: e, sourceNode: l, sourceHandle: c });
-        ((rt.current[o] = s), (r.activate ?? !0) && Vt(o));
+        ((rt.current[o] = s),
+          shouldActivateNode &&
+            (e === `generateImage`
+              ? ((assistantResultRef.current = o), Vt(null))
+              : Vt(o)));
         let d =
             e === `generateText`
               ? { width: 280, height: 190 }
@@ -58213,7 +58286,7 @@ function Rk({
                 ...(r.videoSource ? { videoSource: r.videoSource } : {}),
                 ...(r.audioSource ? { audioSource: r.audioSource } : {}),
               },
-              selected: r.selected ?? !0,
+              selected: r.selected ?? shouldActivateNode,
               ...(r.zIndex === void 0 ? {} : { zIndex: r.zIndex }),
             },
             {
@@ -58296,7 +58369,12 @@ function Rk({
               style: { stroke: `var(--edge-stroke)`, strokeWidth: 2 },
               animated: !1,
             }),
-          T((e) => [...e, ..._]),
+          T((e) => [
+            ...(shouldActivateNode
+              ? e.map((e) => (e.selected ? { ...e, selected: !1 } : e))
+              : e),
+            ..._,
+          ]),
           O((e) => [...e, ...v]),
           n &&
             setTimeout(() => {
@@ -60479,6 +60557,15 @@ function Rk({
     );
   let quickAssistantAssetReady = (0, v.useCallback)(
       (e, t) => {
+        let currentResultId = assistantResultRef.current;
+        currentResultId &&
+          !assistantSourceRef.current &&
+          O((edges) =>
+            edges.filter(
+              (edge) =>
+                !isImageReferenceEdge_(edge, currentResultId, Y.current),
+            ),
+          );
         let { sourceId: n, resultId: r } = ensureAssistantPair(e, t);
         T((i) =>
           i.map((i) =>
@@ -60499,13 +60586,37 @@ function Rk({
         );
         assistantFitRef.current = [n, r].filter(Boolean);
       },
-      [ensureAssistantPair, T],
+      [ensureAssistantPair, O, T],
     ),
     quickAssistantAssetClear = (0, v.useCallback)(() => {
       let e = assistantSourceRef.current,
         t = assistantResultRef.current,
         n = e ? rt.current[e] : null,
         r = t ? rt.current[t] : null;
+      if (!e && t) {
+        (T((nodes) => {
+          let nextNodes = nodes.map((node) =>
+            node.id === r
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connectedImages: [],
+                    uploadedReferenceImages: [],
+                  },
+                }
+              : node,
+          );
+          return ((Y.current = nextNodes), nextNodes);
+        }),
+          O((edges) =>
+            edges.filter(
+              (edge) => !isImageReferenceEdge_(edge, t, Y.current),
+            ),
+          ),
+          (assistantFitRef.current = [t]));
+        return;
+      }
       T((i) => {
         let a = i
           .filter((t) => t.id !== e && t.id !== n)
@@ -60577,8 +60688,8 @@ function Rk({
                         image_resolution: a,
                         image_count: o,
                         image_operation: `generate`,
-                        connectedImages: e?.url ? [e.url] : [],
-                        uploadedReferenceImages: e?.url ? [e.url] : [],
+                        connectedImages: e?.url ? [e.url] : u.data?.connectedImages || [],
+                        uploadedReferenceImages: e?.url ? [e.url] : u.data?.uploadedReferenceImages || [],
                       },
                     }
                   : u,
@@ -61430,18 +61541,32 @@ function Rk({
         y: Math.max(8, Math.min(M.y, window.innerHeight - t - 8)),
       };
     }, [M]),
-    assistantImageResults = w.filter(
-      (e) =>
-        e.type === `result` &&
-        e.data?.resultType === `generateImage` &&
-        e.data?.imageSource !== `upload`,
-    ),
+    assistantImageResults = w.filter(isUnifiedImageResult_),
     assistantImageResult =
+      assistantImageResults.find((e) => e.selected) ||
       assistantImageResults.find((e) => e.data?.generating === !0) ||
       [...assistantImageResults]
         .reverse()
         .find((e) => e.data?.imageUrl || e.data?.imageUrls?.length) ||
       assistantImageResults[assistantImageResults.length - 1],
+    assistantImageGeneratorId = assistantImageResult
+      ? rt.current[assistantImageResult.id] || assistantImageResult.data?.pairedGeneratorId
+      : null,
+    assistantImageGenerator = assistantImageGeneratorId
+      ? w.find((e) => e.id === assistantImageGeneratorId && e.type === `generator`)
+      : null,
+    assistantImageConfig = {
+      ...(assistantImageGenerator?.data || {}),
+      ...(assistantImageResult?.data?.generationConfig || {}),
+    },
+    assistantTargetReferenceUrls = [
+      ...(Array.isArray(assistantImageConfig.connectedImages)
+        ? assistantImageConfig.connectedImages
+        : []),
+      ...(Array.isArray(assistantImageConfig.uploadedReferenceImages)
+        ? assistantImageConfig.uploadedReferenceImages
+        : []),
+    ].filter((url, index, urls) => url && urls.indexOf(url) === index),
     assistantAdvancedMode = !!Zr || !!Qr || !!$r || !!ei || !!B;
   return (
     (0, v.useEffect)(() => {
@@ -61662,6 +61787,16 @@ function Rk({
             }),
             (0, Q.jsx)(CanvasImageAssistant_, {
               providers: y.providers,
+              posterStyles: p,
+              targetId: assistantImageResult?.id || null,
+              targetSettings: {
+                providerId: assistantImageConfig.image_api_id || assistantImageConfig.api_id || ``,
+                model: assistantImageConfig.image_model || assistantImageConfig.model || ``,
+                ratio: assistantImageResult?.data?.imageSize || assistantImageConfig.image_size || `3:4`,
+                resolution: assistantImageConfig.image_resolution || `1k`,
+                count: Number(assistantImageConfig.image_count) || 1,
+              },
+              targetReferenceUrls: assistantTargetReferenceUrls,
               initialPrompt:
                 assistantImageResult?.data?.promptDraft ||
                 assistantImageResult?.data?.image_prompt ||
@@ -61768,7 +61903,10 @@ function Rk({
                     2,
               }),
               {},
-              { selected: !1, activate: !1 },
+              {
+                selected: e === `generateImage`,
+                activate: e === `generateImage`,
+              },
             ),
         }),
         (0, Q.jsx)(bS, {

@@ -51,7 +51,7 @@ try {
   await evaluate(`document.querySelector('.new-project-card')?.click()`);
   await wait(500);
   await evaluate(
-    `[...document.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === '图片')?.click()`,
+    `document.querySelector('.canvas-toolbar-add-option[aria-label="图片"]')?.click()`,
   );
   await wait(500);
   await evaluate(`document.querySelector('.react-flow__node')?.click()`);
@@ -61,8 +61,9 @@ try {
     visible: Boolean(document.querySelector('.poster-template-panel')),
     brief: Boolean(document.querySelector('.poster-template-brief')),
     modeSwitch: Boolean(document.querySelector('.image-composer-mode-switch')),
+    separateComposer: Boolean(document.querySelector('.canvas-composer-dock')),
+    unifiedCreator: Boolean(document.querySelector('.canvas-image-assistant-form')),
     materialOpen: document.querySelector('.image-composer-poster-material')?.open || false,
-    creationFields: Boolean(document.querySelector('.image-creation-fields')),
     advancedOpen: document.querySelector('.poster-template-advanced')?.open || false,
     fields: document.querySelectorAll('.poster-template-fields input, .poster-template-fields textarea').length,
     styles: [...document.querySelectorAll('.poster-template-style')].map((element) => element.textContent.trim())
@@ -71,8 +72,9 @@ try {
   assert.equal(initialState.visible, true);
   assert.equal(initialState.brief, true);
   assert.equal(initialState.modeSwitch, false);
+  assert.equal(initialState.separateComposer, false);
+  assert.equal(initialState.unifiedCreator, true);
   assert.equal(initialState.materialOpen, false);
-  assert.equal(initialState.creationFields, true);
   assert.equal(initialState.advancedOpen, false);
   assert.equal(initialState.fields, 10);
   assert.deepEqual(initialState.styles, [
@@ -103,18 +105,21 @@ try {
   await evaluate(
     `[...document.querySelectorAll('button')].find((button) => button.innerText === '立即生成')?.click()`,
   );
-  await wait(500);
-
-  const submittedLabel = await evaluate(
-    `[...document.querySelectorAll('.poster-template-panel button')].find((button) => button.innerText.includes('提交生成'))?.innerText || ''`,
-  );
+  let posterGenerated = false;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await wait(100);
+    posterGenerated = await evaluate(`Boolean(document.querySelector('.result-image-node img'))`);
+    if (posterGenerated) break;
+  }
 
   const applied = await evaluate(`JSON.stringify({
-    nodeStatus: document.querySelector('.image-processor-node')?.className || ''
+    separateComposer: Boolean(document.querySelector('.canvas-composer-dock')),
+    unifiedCreator: !document.querySelector('.canvas-image-assistant')?.hidden
   })`);
   const appliedState = JSON.parse(applied);
-  assert.equal(submittedLabel, "已提交生成");
-  assert.match(appliedState.nodeStatus, /running|success/);
+  assert.equal(posterGenerated, true);
+  assert.equal(appliedState.separateComposer, false);
+  assert.equal(appliedState.unifiedCreator, true);
 } finally {
   socket.close();
 }

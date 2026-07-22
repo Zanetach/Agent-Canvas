@@ -479,50 +479,70 @@ try {
   );
 
   await evaluate(`(() => {
-    const result = [...document.querySelectorAll('.result-node')]
-      .find((node) => node.textContent.includes('生成图片'))
-      ?.closest('.react-flow__node');
-    result?.click();
+    const select = document.querySelector('.canvas-image-assistant-settings [aria-label="图片比例"]');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    descriptor.set.call(select, '16:9');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
-  let advancedModeReady = false;
+  const imageNodeCountBeforeSecond = await evaluate(
+    `document.querySelectorAll('.result-node').length`,
+  );
+  await evaluate(
+    `document.querySelector('.canvas-toolbar-add-option[aria-label="图片"]')?.click()`,
+  );
+  let selectedNodeUsesUnifiedCreator = false;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await wait(100);
-    advancedModeReady = await evaluate(
-      `Boolean(document.querySelector('.canvas-composer-dock')) && Boolean(document.querySelector('.canvas-image-assistant')?.hidden)`,
+    selectedNodeUsesUnifiedCreator = await evaluate(
+      `document.querySelectorAll('.result-node').length === ${imageNodeCountBeforeSecond + 1} && !document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`,
     );
-    if (advancedModeReady) break;
+    if (selectedNodeUsesUnifiedCreator) break;
   }
-  assert.equal(advancedModeReady, true, "selecting a result should open its node editor");
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-composer-mode-switch'))`),
+    selectedNodeUsesUnifiedCreator,
+    true,
+    "selecting an image result should keep editing in the unified right sidebar",
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock'))`),
     false,
-    "the node editor should not reintroduce simple and professional modes",
+    "image results should not open a separate node composer",
   );
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-creation-fields'))`),
-    true,
-    "the single node editor should retain image prompt controls",
+    await evaluate(`document.querySelector('.canvas-image-assistant-prompt')?.value || ''`),
+    "",
+    "a newly added second image node should get a fresh prompt in the unified sidebar",
   );
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.canvas-composer-dock .image-composer-poster-material'))`),
-    true,
-    "commercial poster generation should remain available as an optional material",
+    await evaluate(`document.querySelector('.canvas-image-assistant-settings [aria-label="图片比例"]')?.value`),
+    "3:4",
+    "node-specific settings should not leak into the newly added image node",
   );
-
-  await evaluate(`document.querySelector('.canvas-composer-dock .canvas-overlay-close-btn')?.click()`);
-  let unifiedCreatorRestored = false;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.canvas-image-assistant-professional'))`),
+    false,
+    "the unified sidebar should not reintroduce a mode switch",
+  );
+  await evaluate(`(() => {
+    const field = document.querySelector('.canvas-image-assistant-prompt');
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    descriptor.set.call(field, '第二节点：生成一张青绿色未来城市海报');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(100);
+  await evaluate(`document.querySelector('.canvas-image-assistant-generate')?.click()`);
+  let secondNodeGenerated = false;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
     await wait(100);
-    unifiedCreatorRestored = await evaluate(
-      `!document.querySelector('.canvas-composer-dock') && !document.querySelector('.canvas-image-assistant')?.hidden`,
+    secondNodeGenerated = await evaluate(
+      `Boolean(document.querySelector('.react-flow__node.selected .result-image-node img'))`,
     );
-    if (unifiedCreatorRestored) break;
+    if (secondNodeGenerated) break;
   }
-  assert.equal(unifiedCreatorRestored, true, "closing the node editor should restore the unified image creator");
   assert.equal(
-    await evaluate(`document.querySelectorAll('.react-flow__node.selected').length`),
-    0,
-    "closing the compact advanced composer should clear the active node selection",
+    secondNodeGenerated,
+    true,
+    "generation from the unified sidebar should write back to the selected second image node",
   );
 
   await evaluate(`document.querySelector('.back-button')?.click()`);
