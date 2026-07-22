@@ -30113,21 +30113,19 @@ function av({
         u(null);
         return;
       }
-      let e,
-        t = () => {
-          let n =
-            s.current?.closest?.(`.custom-node`) ||
-            s.current?.closest?.(`.canvas-group-node`);
-          if (n) {
-            let e = n.getBoundingClientRect();
-            u({
-              left: Math.round((e.left + e.width / 2) * 10) / 10,
-              top: Math.round(Math.max(8, e.top - 64) * 10) / 10,
-            });
-          }
-          e = requestAnimationFrame(t);
-        };
-      return (t(), () => cancelAnimationFrame(e));
+      let e =
+        s.current?.closest?.(`.custom-node`) ||
+        s.current?.closest?.(`.canvas-group-node`);
+      if (!e) return;
+      let t = () => {
+        let n = e.getBoundingClientRect(),
+          r = {
+            left: Math.round((n.left + n.width / 2) * 10) / 10,
+            top: Math.round(Math.max(8, n.top - 64) * 10) / 10,
+          };
+        u((e) => (e?.left === r.left && e?.top === r.top ? e : r));
+      };
+      return observeCanvasGeometry([e], t);
     }, [r, n]),
     iv(c, { enabled: !n && d.length > 0 && (!r || !!l) }),
     d.length === 0 || n)
@@ -31506,6 +31504,52 @@ var Dv = [
           alert(`图片下载失败：${e?.message || e}`));
       }
   };
+function observeCanvasGeometry(e, t) {
+  let n = 0,
+    r = () => {
+      n ||
+        (n = window.requestAnimationFrame(() => {
+          ((n = 0), t());
+        }));
+    },
+    i = (e || []).filter(Boolean),
+    a = i[0]?.closest?.(`.react-flow`),
+    o = a?.querySelector?.(`.react-flow__viewport`),
+    s = [
+      ...new Set([
+        ...i,
+        ...i.map((e) => e.closest?.(`.react-flow__node`)).filter(Boolean),
+        o,
+      ].filter(Boolean)),
+    ],
+    c =
+      typeof ResizeObserver < `u`
+        ? new ResizeObserver(r)
+        : null,
+    l =
+      s.length > 0 && typeof MutationObserver < `u`
+        ? new MutationObserver(r)
+        : null;
+  return (
+    s.forEach((e) => {
+      (c?.observe(e),
+        l?.observe(e, {
+          attributes: !0,
+          attributeFilter: [`class`, `style`],
+        }));
+    }),
+    window.addEventListener(`resize`, r),
+    window.addEventListener(`scroll`, r, !0),
+    r(),
+    () => {
+      (n && window.cancelAnimationFrame(n),
+        c?.disconnect(),
+        l?.disconnect(),
+        window.removeEventListener(`resize`, r),
+        window.removeEventListener(`scroll`, r, !0));
+    }
+  );
+}
 function jv({
   imageUrl: e,
   nodeId: t,
@@ -31555,31 +31599,24 @@ function jv({
       x(null);
       return;
     }
-    let e = 0,
-      t = () => {
-        let n = _.current?.closest?.(`.result-image-expanded-card`),
-          r = _.current?.closest?.(`.result-node`),
-          i =
-            n ||
-            r ||
-            _.current?.closest?.(`.result-image-toolbar-anchor`) ||
-            _.current?.closest?.(`.result-image-wrap`) ||
-            _.current?.parentElement;
-        if (!i) return;
-        let a = i.getBoundingClientRect(),
+    let e = _.current?.closest?.(`.result-image-expanded-card`),
+      t = _.current?.closest?.(`.result-node`),
+      n =
+        e ||
+        t ||
+        _.current?.closest?.(`.result-image-toolbar-anchor`) ||
+        _.current?.closest?.(`.result-image-wrap`) ||
+        _.current?.parentElement;
+    if (!n) return;
+    let r = () => {
+        let e = n.getBoundingClientRect(),
           o = {
-            left: Math.round((a.left + a.width / 2) * 10) / 10,
-            top: Math.round(Math.max(8, a.top - 6) * 10) / 10,
+            left: Math.round((e.left + e.width / 2) * 10) / 10,
+            top: Math.round(Math.max(8, e.top - 6) * 10) / 10,
           };
-        (x((e) => (e?.left === o.left && e?.top === o.top ? e : o)),
-          (e = window.requestAnimationFrame(t)));
+        x((e) => (e?.left === o.left && e?.top === o.top ? e : o));
       };
-    return (
-      t(),
-      () => {
-        window.cancelAnimationFrame(e);
-      }
-    );
+    return observeCanvasGeometry([n], r);
   }, [c, d]);
   let C = (0, v.useCallback)(
       (c, l = {}) => {
@@ -40622,13 +40659,9 @@ function CS({ nodes: e, onDragCreate: t }) {
           : o,
       );
     };
-    e();
-    let t = window.setInterval(e, 120);
-    return (
-      window.addEventListener(`resize`, e),
-      () => {
-        (window.clearInterval(t), window.removeEventListener(`resize`, e));
-      }
+    return observeCanvasGeometry(
+      f.map((e) => SS(e.id)),
+      e,
     );
   }, [p, f]),
     (0, v.useEffect)(() => {
@@ -40637,9 +40670,12 @@ function CS({ nodes: e, onDragCreate: t }) {
         return;
       }
       let e = (e) => {
-          l.current = { x: e.clientX, y: e.clientY };
+          ((l.current = { x: e.clientX, y: e.clientY }),
+            d.current ||
+              (d.current = window.requestAnimationFrame(t)));
         },
         t = () => {
+          d.current = null;
           let e = n.left + n.width,
             r = n.top + n.height / 2,
             i = l.current.x - e,
@@ -40654,13 +40690,11 @@ function CS({ nodes: e, onDragCreate: t }) {
             }
           }
           let f = u.current;
-          ((Math.abs(f.x - c.x) > 0.5 || Math.abs(f.y - c.y) > 0.5) &&
-            ((u.current = c), a(c)),
-            (d.current = window.requestAnimationFrame(t)));
+          (Math.abs(f.x - c.x) > 0.5 || Math.abs(f.y - c.y) > 0.5) &&
+            ((u.current = c), a(c));
         };
       return (
         window.addEventListener(`pointermove`, e, { passive: !0 }),
-        (d.current = window.requestAnimationFrame(t)),
         () => {
           (window.removeEventListener(`pointermove`, e),
             (d.current &&= (window.cancelAnimationFrame(d.current), null)));
@@ -40822,9 +40856,14 @@ function ES({
             return r && r.left === i.left && r.top === i.top ? r : i;
           });
       };
-      e();
-      let t = setInterval(e, 200);
-      return () => clearInterval(t);
+      return observeCanvasGeometry(
+        c.map((e) =>
+          document.querySelector(
+            `.react-flow__node[data-id="${TS(e.id)}"]`,
+          ),
+        ),
+        e,
+      );
     }, [l, c]),
     iv(s, { enabled: l && !!a }),
     !l || !a
@@ -57595,14 +57634,12 @@ function Rk({
         return {
           label: `智能拆分器`,
           local_prompt: ``,
-          uploaded_reference_images: [],
           direction_count: `auto`,
           images_per_direction: 1,
           image_negative_prompt: E_(e.image_negative_prompt),
           image_size: `3:4`,
           image_resolution: `1k`,
           batches: [],
-          status: ``,
           ...e,
           status: Fb(e.status),
           statusLabel: ``,

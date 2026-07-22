@@ -168,6 +168,10 @@ async function createHermesImageAttachment(imageUrls) {
 
 function runHermesText(command, args, { signal, timeoutMs }) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason || new Error("Hermes 文本任务已取消"));
+      return;
+    }
     const [executable, ...baseArgs] = command;
     const child = spawn(executable, [...baseArgs, ...args], {
       env: process.env,
@@ -191,6 +195,7 @@ function runHermesText(command, args, { signal, timeoutMs }) {
       terminate();
     }, timeoutMs);
     signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     child.stdout.on("data", (chunk) => {
       outputBytes += chunk.length;
       if (outputBytes > maxOutputBytes) terminate();
@@ -632,6 +637,10 @@ export function createDirectCodexProvider({
 
 function runCommand(command, input, { signal, env }) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason || new Error("Codex 图片任务已取消"));
+      return;
+    }
     const [executable, ...args] = command;
     const child = spawn(executable, args, {
       env: { ...process.env, ...env },
@@ -644,6 +653,7 @@ function runCommand(command, input, { signal, env }) {
 
     const abort = () => child.kill("SIGTERM");
     signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     child.stdout.on("data", (chunk) => {
       outputBytes += chunk.length;
       if (outputBytes > maxOutputBytes) {

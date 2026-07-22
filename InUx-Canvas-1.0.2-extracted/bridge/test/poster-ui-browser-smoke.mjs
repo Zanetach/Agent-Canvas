@@ -1,50 +1,9 @@
 import assert from "node:assert/strict";
+import { createCdpBrowserSession } from "./cdp-browser-helpers.mjs";
 
 const debugBase = process.argv[2];
-assert.ok(debugBase, "missing Chrome DevTools endpoint");
-
-const pages = await fetch(`${debugBase}/json/list`).then((response) => response.json());
-const page = pages.find((candidate) => candidate.type === "page");
-assert.ok(page?.webSocketDebuggerUrl, "BeeMax page was not available in Chrome");
-
-const socket = new WebSocket(page.webSocketDebuggerUrl);
-const pending = new Map();
-let sequence = 0;
-
-socket.addEventListener("message", (event) => {
-  const message = JSON.parse(event.data);
-  const resolve = pending.get(message.id);
-  if (!resolve) return;
-  pending.delete(message.id);
-  resolve(message);
-});
-
-await new Promise((resolve, reject) => {
-  socket.addEventListener("open", resolve, { once: true });
-  socket.addEventListener("error", reject, { once: true });
-});
-
-function command(method, params = {}) {
-  return new Promise((resolve) => {
-    const id = ++sequence;
-    pending.set(id, resolve);
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-}
-
-async function evaluate(expression) {
-  const response = await command("Runtime.evaluate", {
-    expression,
-    awaitPromise: true,
-    returnByValue: true,
-  });
-  if (response.result?.exceptionDetails) {
-    throw new Error(response.result.exceptionDetails.text || "browser evaluation failed");
-  }
-  return response.result?.result?.value;
-}
-
-const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const session = await createCdpBrowserSession(debugBase);
+const { evaluate, wait } = session;
 
 async function waitFor(expression, attempts = 40) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -200,8 +159,55 @@ try {
     '重新上传',
     '删除节点',
   ]);
+
+  await evaluate(`(() => {
+    window.__qaOriginalRequestAnimationFrame = window.requestAnimationFrame;
+    window.__qaAnimationFrameCount = 0;
+    window.requestAnimationFrame = (callback) =>
+      window.__qaOriginalRequestAnimationFrame((timestamp) => {
+        window.__qaAnimationFrameCount += 1;
+        callback(timestamp);
+      });
+  })()`);
+  let idleAnimationFrameCount;
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    idleAnimationFrameCount = Number(
+      await evaluate(`window.__qaAnimationFrameCount`),
+    );
+  } finally {
+    await evaluate(`(() => {
+      window.requestAnimationFrame = window.__qaOriginalRequestAnimationFrame;
+      delete window.__qaOriginalRequestAnimationFrame;
+      delete window.__qaAnimationFrameCount;
+    })()`);
+  }
+  assert.ok(
+    idleAnimationFrameCount < 12,
+    `selected image toolbar should not continuously animate while idle; observed ${idleAnimationFrameCount} frames in 500ms`,
+  );
+
+  const toolbarLeftBeforeNodeMove = Number(
+    await evaluate(`parseFloat(document.querySelector('.result-image-portal-toolbar')?.style.left || '0')`),
+  );
+  await evaluate(`(() => {
+    const generatedNode = [...document.querySelectorAll('.react-flow__node')]
+      .find((node) => node.querySelector('.result-image-node img'));
+    if (generatedNode) generatedNode.style.transform += ' translateX(40px)';
+  })()`);
+  assert.equal(
+    await waitFor(
+      `Math.abs(parseFloat(document.querySelector('.result-image-portal-toolbar')?.style.left || '0') - ${toolbarLeftBeforeNodeMove}) > 20`,
+    ),
+    true,
+    'selected image toolbar should follow node geometry changes without polling',
+  );
+  console.log(
+    `PASS idle selected-toolbar animation frames: ${idleAnimationFrameCount} in 500ms`,
+  );
+  session.assertNoRuntimeErrors("poster flow");
 } finally {
-  socket.close();
+  session.close();
 }
 
 console.log("PASS structured commercial poster form browser interaction");

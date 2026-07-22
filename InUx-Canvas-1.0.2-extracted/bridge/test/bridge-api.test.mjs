@@ -1723,6 +1723,42 @@ test("Hermes text provider discovers the configured model without exposing crede
   }
 });
 
+test("a pre-cancelled Hermes request does not start a provider process", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-cancelled-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  const markerPath = path.join(dataDir, "hermes-started.txt");
+  await writeFile(
+    configFile,
+    "model:\n  default: cancelled-test-model\n  provider: custom:cancelled-test\n",
+    "utf8",
+  );
+  const command = [
+    process.execPath,
+    "--input-type=module",
+    "-e",
+    `import { writeFileSync } from "node:fs";
+     setTimeout(() => writeFileSync(${JSON.stringify(markerPath)}, "started"), 100);
+     setTimeout(() => process.exit(0), 200);`,
+  ];
+  const controller = new AbortController();
+  controller.abort(new Error("cancelled before Hermes start"));
+
+  try {
+    const provider = await createHermesTextProvider({ configFile, command });
+    await assert.rejects(
+      provider.generateText(
+        { model: "cancelled-test-model", userPrompt: "must not run" },
+        { signal: controller.signal },
+      ),
+      /cancelled before Hermes start/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await assert.rejects(readFile(markerPath), { code: "ENOENT" });
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("Hermes text provider falls back to a native CLI attachment when Codex vision fails", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-vision-test-"));
   const configFile = path.join(dataDir, "config.yaml");
@@ -1964,6 +2000,37 @@ test("a timed-out Codex process is terminated before the router uses fallback", 
     );
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("a pre-cancelled Codex command does not start a provider process", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-pre-cancelled-test-"));
+  const markerPath = path.join(dataDir, "provider-started.txt");
+  const command = [
+    process.execPath,
+    "--input-type=module",
+    "-e",
+    `import { writeFileSync } from "node:fs";
+     process.stdin.resume();
+     setTimeout(() => writeFileSync(${JSON.stringify(markerPath)}, "started"), 100);
+     setTimeout(() => process.exit(0), 200);`,
+  ];
+  const provider = createCommandCodexProvider({ command, timeoutMs: 1_000 });
+  const controller = new AbortController();
+  controller.abort(new Error("cancelled before provider start"));
+
+  try {
+    await assert.rejects(
+      provider.generate(
+        { prompt: "must not run", operation: "generate" },
+        { signal: controller.signal, task: { task_id: "pre-cancelled" } },
+      ),
+      /cancelled before provider start/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await assert.rejects(readFile(markerPath), { code: "ENOENT" });
+  } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
 });

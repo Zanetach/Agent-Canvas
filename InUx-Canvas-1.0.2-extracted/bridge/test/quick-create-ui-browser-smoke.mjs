@@ -1,50 +1,9 @@
 import assert from "node:assert/strict";
+import { createCdpBrowserSession } from "./cdp-browser-helpers.mjs";
 
 const debugBase = process.argv[2];
-assert.ok(debugBase, "missing Chrome DevTools endpoint");
-
-const pages = await fetch(`${debugBase}/json/list`).then((response) => response.json());
-const page = pages.find((candidate) => candidate.type === "page");
-assert.ok(page?.webSocketDebuggerUrl, "BeeMax page was not available in Chrome");
-
-const socket = new WebSocket(page.webSocketDebuggerUrl);
-const pending = new Map();
-let sequence = 0;
-
-socket.addEventListener("message", (event) => {
-  const message = JSON.parse(event.data);
-  const resolve = pending.get(message.id);
-  if (!resolve) return;
-  pending.delete(message.id);
-  resolve(message);
-});
-
-await new Promise((resolve, reject) => {
-  socket.addEventListener("open", resolve, { once: true });
-  socket.addEventListener("error", reject, { once: true });
-});
-
-function command(method, params = {}) {
-  return new Promise((resolve) => {
-    const id = ++sequence;
-    pending.set(id, resolve);
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-}
-
-async function evaluate(expression) {
-  const response = await command("Runtime.evaluate", {
-    expression,
-    awaitPromise: true,
-    returnByValue: true,
-  });
-  if (response.result?.exceptionDetails) {
-    throw new Error(response.result.exceptionDetails.text || "browser evaluation failed");
-  }
-  return response.result?.result?.value;
-}
-
-const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const session = await createCdpBrowserSession(debugBase);
+const { command, evaluate, wait } = session;
 
 try {
   await evaluate(`document.querySelector('.back-button')?.click()`);
@@ -604,8 +563,9 @@ try {
     0,
     "changing unified generation settings should not create placeholder nodes",
   );
+  session.assertNoRuntimeErrors("quick-create flow");
 } finally {
-  socket.close();
+  session.close();
 }
 
 console.log("PASS full homepage quick-create interaction");
