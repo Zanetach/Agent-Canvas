@@ -63245,7 +63245,7 @@ function QuickCreatePanel_({
                 children: [
                   (0, Q.jsx)(`span`, {
                     className: `quick-create-mode-section-title`,
-                    children: `创作模板`,
+                    children: `模板库`,
                   }),
                   (0, Q.jsx)(`small`, {
                     children: `${quickCreateStarterTemplates_.filter((e) => e.type === r).length + (r === `image` ? 1 : 0)} 个`,

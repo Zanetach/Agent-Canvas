@@ -49,7 +49,7 @@ try {
     );
   }
   assert.equal(initial.templateInsideMore, false);
-  assert.equal(initial.templateHeading, '创作模板');
+  assert.equal(initial.templateHeading, '模板库');
   assert.deepEqual(initial.tabs, ["图片", "视频"]);
   assert.equal(initial.exampleCount, 3);
   assert.deepEqual(initial.modes, [
@@ -74,7 +74,7 @@ try {
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.innerText || ''`),
-    /创作模板[\s\S]*4 个/,
+    /模板库[\s\S]*4 个/,
   );
   assert.deepEqual(
     JSON.parse(
