@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1499,6 +1499,89 @@ test("non-Bridge routes are transparently proxied to the original Canvas backend
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("standalone mode serves the Canvas UI, health, and local runtime settings", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
+  const frontendDir = path.join(dataDir, "frontend");
+  await mkdir(path.join(frontendDir, "assets"), { recursive: true });
+  await writeFile(
+    path.join(frontendDir, "index.html"),
+    '<!doctype html><script type="module" src="/assets/app.js"></script>',
+  );
+  await writeFile(path.join(frontendDir, "assets", "app.js"), "window.canvasReady = true;");
+  const server = createBridgeServer({
+    dataDir,
+    frontendDir,
+    providers: [{ id: "hermes-image", imageModels: ["gpt-image-2"], async generate() {} }],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const frontend = await fetch(`${baseUrl}/workspace/project-1`);
+    assert.equal(frontend.status, 200);
+    assert.match(frontend.headers.get("content-type"), /text\/html/);
+    assert.match(await frontend.text(), /assets\/app\.js/);
+
+    const script = await fetch(`${baseUrl}/assets/app.js`);
+    assert.equal(script.status, 200);
+    assert.match(script.headers.get("content-type"), /javascript/);
+    assert.equal(await script.text(), "window.canvasReady = true;");
+
+    const health = await fetch(`${baseUrl}/api/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), {
+      status: "ok",
+      service: "inux-canvas",
+      mode: "standalone",
+    });
+
+    const initial = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    assert.equal(initial.activeProviderId, "beemax-codex-agent");
+    assert.deepEqual(initial.providers[0].imageModels, ["gpt-image-2"]);
+
+    const updated = await fetch(`${baseUrl}/api/admin/runtime-settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        activeProviderId: "manual",
+        providers: [{ id: "manual", name: "Manual", enabled: true }],
+      }),
+    }).then((response) => response.json());
+    assert.equal(updated.settings.activeProviderId, "manual");
+    assert.deepEqual(updated.settings.providers.map((provider) => provider.id), [
+      "beemax-codex-agent",
+      "manual",
+    ]);
+
+    const upload = new FormData();
+    upload.append("file", new Blob([PNG_BYTES], { type: "image/png" }), "reference.png");
+    const imported = await fetch(`${baseUrl}/api/uploads/images`, {
+      method: "POST",
+      body: upload,
+    }).then((response) => response.json());
+    assert.equal(imported.success, true);
+    assert.match(imported.asset.url, /^\/beemax-assets\/standalone_/);
+    const importedBytes = await fetch(`${baseUrl}${imported.asset.url}`);
+    assert.deepEqual(Buffer.from(await importedBytes.arrayBuffer()), PNG_BYTES);
+
+    const localized = await fetch(`${baseUrl}/api/assets/localize`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ urls: [`${baseUrl}${imported.asset.url}`] }),
+    }).then((response) => response.json());
+    assert.equal(localized.success, true);
+    assert.equal(localized.assets[0].url, imported.asset.url);
+
+    const assets = await fetch(`${baseUrl}/api/assets`).then((response) => response.json());
+    assert.equal(assets.success, true);
+    assert.ok(assets.assets.some((asset) => asset.id === imported.asset.id));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
   }
 });

@@ -201,6 +201,21 @@ async function readJson(request) {
   }
 }
 
+async function readRequestBytes(request, maxBytes = MAX_INPUT_IMAGE_BYTES) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      const error = new Error("上传文件不能超过 50 MB");
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 function extensionFor(contentType) {
   if (contentType === "image/jpeg") return ".jpg";
   if (contentType === "image/webp") return ".webp";
@@ -214,6 +229,10 @@ function pngDataUrlBytes(value, label) {
 }
 
 async function createThumbnail(source, target) {
+  if (process.platform !== "darwin") {
+    const dimensions = await portableImageDimensions(source);
+    return { ...dimensions, reuseSource: true };
+  }
   const inspected = await runSips(["-g", "pixelWidth", "-g", "pixelHeight", source]);
   const width = Number(inspected.output.match(/pixelWidth:\s*(\d+)/)?.[1]);
   const height = Number(inspected.output.match(/pixelHeight:\s*(\d+)/)?.[1]);
@@ -226,6 +245,15 @@ async function createThumbnail(source, target) {
   if (!resized.ok) throw new Error("无法生成图片缩略图");
   const scale = 320 / Math.max(width, height);
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+async function portableImageDimensions(file) {
+  try {
+    const decoded = decodePng(await readFile(file));
+    return { width: decoded.width, height: decoded.height };
+  } catch {
+    return { width: 0, height: 0 };
+  }
 }
 
 function runSips(args) {
@@ -379,6 +407,9 @@ export function cropDimensions(width, height, requested) {
 }
 
 async function normalizeImageAspect(file, requested) {
+  if (process.platform !== "darwin") {
+    return portableImageDimensions(file);
+  }
   const inspected = await runSips(["-g", "pixelWidth", "-g", "pixelHeight", file]);
   if (!inspected.ok) throw new Error("无法读取生成图片尺寸");
   const width = Number(inspected.output.match(/pixelWidth:\s*(\d+)/)?.[1]);
@@ -449,6 +480,7 @@ export function createBridgeServer({
   providers,
   publicOrigin = "",
   upstreamUrl = "",
+  frontendDir = "",
 }) {
   if (!dataDir) throw new Error("dataDir is required");
   if (!Array.isArray(providers) || providers.length === 0) {
@@ -462,7 +494,9 @@ export function createBridgeServer({
   const tasksDir = path.join(dataDir, "tasks");
   const agentPluginsPath = path.join(dataDir, "agent-plugins.json");
   const agentPluginTasksPath = path.join(dataDir, "agent-plugin-tasks.json");
+  const runtimeSettingsPath = path.join(dataDir, "runtime-settings.json");
   const upstream = upstreamUrl.replace(/\/$/, "");
+  const standalone = !upstream && Boolean(frontendDir);
   const controlledOrigins = new Set(
     [upstream, publicOrigin]
       .filter(Boolean)
@@ -758,7 +792,25 @@ export function createBridgeServer({
 
   async function proxyRuntimeSettings(request, response) {
     if (!upstream) {
-      sendJson(response, 404, { success: false, error: "原 Canvas 后端未配置" });
+      let settings = {};
+      try {
+        settings = JSON.parse(await readFile(runtimeSettingsPath, "utf8"));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      if ((request.method || "GET") === "PUT") {
+        settings = withoutManagedCodexProvider(await readJson(request)) || {};
+        await mkdir(path.dirname(runtimeSettingsPath), { recursive: true });
+        await writeFile(runtimeSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+      }
+      const merged = withManagedCodexProvider(settings, managedProvider);
+      sendJson(
+        response,
+        200,
+        (request.method || "GET") === "PUT"
+          ? { success: true, settings: merged }
+          : merged,
+      );
       return;
     }
     const method = request.method || "GET";
@@ -788,6 +840,31 @@ export function createBridgeServer({
       payload = withManagedCodexProvider(payload, managedProvider);
     }
     sendJson(response, upstreamResponse.status, payload);
+  }
+
+  async function saveStandaloneUpload(bytes, contentType = "image/png") {
+    if (!/^image\/(?:png|jpeg|webp)$/i.test(contentType) || !bytes.length) {
+      const error = new Error("仅支持 PNG、JPEG 和 WebP 图片");
+      error.statusCode = 422;
+      throw error;
+    }
+    const id = `standalone_${Date.now()}_${randomUUID().slice(0, 8)}`;
+    const filename = `${id}${extensionFor(contentType.toLowerCase())}`;
+    await mkdir(assetsDir, { recursive: true });
+    await writeFile(path.join(assetsDir, filename), bytes);
+    const asset = {
+      id,
+      type: "image",
+      url: `/beemax-assets/${filename}`,
+      content_type: contentType.toLowerCase(),
+      created_at: Math.floor(Date.now() / 1000),
+    };
+    await writeFile(
+      path.join(assetsDir, `${id}.json`),
+      `${JSON.stringify(asset, null, 2)}\n`,
+      "utf8",
+    );
+    return asset;
   }
 
   async function persistTask(task) {
@@ -1039,7 +1116,9 @@ export function createBridgeServer({
     const origin = publicOrigin.replace(/\/$/, "");
     const assetPath = `/beemax-assets/${encodeURIComponent(filename)}`;
     const bridgeAssetUrl = `${origin}${assetPath}`;
-    const thumbnailPath = `/beemax-assets/${encodeURIComponent(thumbnailFilename)}`;
+    const thumbnailPath = thumbnailDimensions.reuseSource
+      ? assetPath
+      : `/beemax-assets/${encodeURIComponent(thumbnailFilename)}`;
     const thumbnailUrl = `${origin}${thumbnailPath}`;
     const canvasAsset = await registerCanvasAsset(task, bridgeAssetUrl);
     const assetUrl = canvasAsset ? `${origin}${canvasAsset.url}` : bridgeAssetUrl;
@@ -1205,6 +1284,92 @@ export function createBridgeServer({
             ...[...agentPlugins.values()].map((plugin) => `agent-plugin:${plugin.id}`),
           ],
         });
+        return;
+      }
+
+      if (standalone && request.method === "GET" && url.pathname === "/api/health") {
+        sendJson(response, 200, {
+          status: "ok",
+          service: "inux-canvas",
+          mode: "standalone",
+        });
+        return;
+      }
+
+      if (standalone && request.method === "POST" && url.pathname === "/api/uploads/images") {
+        const contentType = String(request.headers["content-type"] || "");
+        const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.slice(1).find(Boolean);
+        if (!boundary) {
+          sendJson(response, 400, { success: false, error: "缺少 multipart boundary" });
+          return;
+        }
+        const body = await readRequestBytes(request, MAX_INPUT_IMAGE_BYTES + 64 * 1024);
+        const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"));
+        const closing = body.lastIndexOf(Buffer.from(`\r\n--${boundary}`));
+        if (headerEnd < 0 || closing <= headerEnd) {
+          sendJson(response, 400, { success: false, error: "无效的 multipart 图片上传" });
+          return;
+        }
+        const headers = body.subarray(0, headerEnd).toString("utf8");
+        const imageType = headers.match(/content-type:\s*(image\/(?:png|jpeg|webp))/i)?.[1];
+        const asset = await saveStandaloneUpload(body.subarray(headerEnd + 4, closing), imageType);
+        sendJson(response, 200, { success: true, asset, assets: [asset] });
+        return;
+      }
+
+      if (standalone && request.method === "POST" && url.pathname === "/api/assets/localize") {
+        const payload = await readJson(request);
+        const urls = Array.isArray(payload.urls) ? payload.urls.map(String) : [];
+        const mapping = {};
+        const assets = [];
+        const localOrigin = publicOrigin
+          ? new URL(publicOrigin).origin
+          : new URL(`http://${request.headers.host || "127.0.0.1"}`).origin;
+        for (const source of urls) {
+          const parsed = new URL(source, localOrigin);
+          const match = parsed.pathname.match(/^\/beemax-assets\/([^/]+)$/);
+          if (!match || parsed.origin !== localOrigin) {
+            const error = new Error("独立模式只允许登记当前 Canvas 生成的图片");
+            error.statusCode = 422;
+            throw error;
+          }
+          const filename = path.basename(decodeURIComponent(match[1]));
+          await readFile(path.join(assetsDir, filename));
+          const contentType = filename.endsWith(".jpg")
+            ? "image/jpeg"
+            : filename.endsWith(".webp")
+              ? "image/webp"
+              : "image/png";
+          const id = filename.replace(/\.(?:png|jpe?g|webp)$/i, "");
+          const asset = {
+            id,
+            type: "image",
+            url: `/beemax-assets/${filename}`,
+            content_type: contentType,
+          };
+          mapping[source] = asset;
+          assets.push(asset);
+        }
+        sendJson(response, 200, { success: true, mapping, assets });
+        return;
+      }
+
+      if (standalone && request.method === "GET" && url.pathname === "/api/assets") {
+        let filenames = [];
+        try {
+          filenames = await readdir(assetsDir);
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+        const assets = [];
+        for (const filename of filenames.filter((name) => name.startsWith("standalone_") && name.endsWith(".json"))) {
+          try {
+            assets.push(JSON.parse(await readFile(path.join(assetsDir, filename), "utf8")));
+          } catch {
+            // Ignore incomplete metadata; asset writes are best effort.
+          }
+        }
+        sendJson(response, 200, { success: true, assets });
         return;
       }
 
@@ -1700,6 +1865,46 @@ export function createBridgeServer({
           "cache-control": "public, max-age=31536000, immutable",
         });
         response.end(bytes);
+        return;
+      }
+
+      if (
+        standalone &&
+        ["GET", "HEAD"].includes(request.method || "GET") &&
+        !url.pathname.startsWith("/api/")
+      ) {
+        const requested = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+        const candidate = path.resolve(frontendDir, requested || "index.html");
+        const root = path.resolve(frontendDir);
+        let file = candidate.startsWith(`${root}${path.sep}`) || candidate === root
+          ? candidate
+          : path.join(root, "index.html");
+        let bytes;
+        try {
+          bytes = await readFile(file);
+        } catch (error) {
+          if (error?.code !== "ENOENT" && error?.code !== "EISDIR") throw error;
+          file = path.join(root, "index.html");
+          bytes = await readFile(file);
+        }
+        const extension = path.extname(file).toLowerCase();
+        const contentType = {
+          ".html": "text/html; charset=utf-8",
+          ".js": "text/javascript; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
+          ".svg": "image/svg+xml",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".webp": "image/webp",
+          ".woff2": "font/woff2",
+        }[extension] || "application/octet-stream";
+        response.writeHead(200, {
+          "content-type": contentType,
+          "cache-control": extension === ".html" ? "no-store" : "public, max-age=31536000, immutable",
+        });
+        if ((request.method || "GET") === "HEAD") response.end();
+        else response.end(bytes);
         return;
       }
 

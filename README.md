@@ -14,16 +14,12 @@ Agent Canvas 是一个面向 AI Agent 的可视化创作画布，支持文本、
 
 ## 系统要求
 
-当前仓库内置的 Canvas 后端为 **macOS Apple Silicon（arm64）** 版本。
-
-- macOS 13 或更高版本
-- Apple Silicon：M1、M2、M3、M4 或更新芯片
+- Linux x86_64 或 macOS
 - Node.js 20 或更高版本
-- Git
-- 可选：Codex CLI，用于免 API Key 调用 Codex 图片模型
-- 可选：Hermes Agent 或 Zylos，用于复用 Agent 已配置的能力
+- Git、curl
+- 推荐：已配置 `image_gen` 的 Hermes Agent。部署脚本会直接复用 Hermes 的 Provider、模型和 OAuth 登录态，不需要运行 `codex login`
 
-Windows、Linux 和 Intel Mac 暂未提供内置后端二进制文件。
+Linux 使用纯 Node.js 独立模式，不会运行仓库中的 macOS Mach-O 后端，也不依赖 macOS 的 `sips`。
 
 ## 快速安装
 
@@ -36,35 +32,49 @@ cd Agent-Canvas/InUx-Canvas-1.0.2-extracted
 
 除“更新”章节外，后续命令均假设当前目录为 `InUx-Canvas-1.0.2-extracted`。
 
-### 2. 启动
+### 2. 一次部署并启动（推荐）
 
 ```bash
-./start-web.sh
+./deploy.sh --no-open
 ```
 
-启动完成后会自动打开：
+该命令会一次完成：
+
+- 检测 Node.js 运行环境
+- 安装并启用 Hermes Canvas 插件
+- 自动连接 Hermes 已配置的 `image_gen` Provider
+- 启动独立 Canvas 前端和 Bridge API
+- 检查服务健康状态
+
+启动完成后访问：
 
 ```text
 http://127.0.0.1:17851
 ```
 
-如果不希望自动打开浏览器：
+桌面环境希望自动打开浏览器时：
 
 ```bash
-./start-web.sh --no-open
+./deploy.sh
 ```
 
-终端按 `Ctrl+C` 可同时停止 Canvas 后端和 BeeMax Bridge。
-
-### 3. macOS 首次运行提示
-
-如果系统提示无法验证下载的程序，只处理当前项目目录的隔离属性：
+终端按 `Ctrl+C` 可停止服务。Hermes 安装在非默认位置时：
 
 ```bash
-./start-web.sh --fix-quarantine
+HERMES_PYTHON="/path/to/hermes-agent/venv/bin/python" ./deploy.sh --no-open
 ```
 
-该命令不会关闭 macOS Gatekeeper。
+若没有检测到 Hermes，画布仍会启动，但生成能力不会被伪装为可用；可通过下文的服务端 Provider 环境变量配置图片服务后重新启动。
+
+### 3. macOS 兼容模式
+
+如需继续运行原有 macOS arm64 后端：
+
+```bash
+./start-web.sh
+```
+
+如果系统提示无法验证下载的程序，可运行 `./start-web.sh --fix-quarantine`。该命令只处理当前项目目录，不会关闭 macOS Gatekeeper。
 
 ## Agent 一键安装
 
@@ -73,7 +83,7 @@ http://127.0.0.1:17851
 把下面整句话发送给 Codex、Hermes、Zylos 或其他能够执行终端命令的 Agent：
 
 ```text
-请安装 Agent Canvas：如果本机没有项目，请从 https://github.com/Zanetach/Agent-Canvas.git 克隆最新 main；如果目录已存在，请先确认 origin 与该地址一致并检查 git status，仅在工作区干净时执行 git pull --ff-only，否则立即停止并向我报告，禁止 reset、stash、删除或覆盖本地改动；进入 InUx-Canvas-1.0.2-extracted 后运行 ./install-agent.sh all 自动检测并配置当前环境中的 Agent，再使用可靠的后台任务方式运行 ./start-web.sh --no-open，记录日志和 PID，轮询 http://127.0.0.1:17851/api/beemax/health 最多 60 秒，最后告诉我各 Agent 的安装结果、服务状态、日志位置和访问地址。
+请一次部署并启动 Agent Canvas：如果本机没有项目，请从 https://github.com/Zanetach/Agent-Canvas.git 克隆最新 main；如果目录已存在，请先确认 origin 与该地址一致并检查 git status，仅在工作区干净时执行 git pull --ff-only，否则立即停止并向我报告，禁止 reset、stash、删除或覆盖本地改动；进入 InUx-Canvas-1.0.2-extracted 后执行 ./deploy.sh --no-open，复用当前 Hermes 已配置的 image_gen Provider 和 OAuth 登录态，不要执行 codex login；使用可靠的后台服务方式保持进程运行，轮询 http://127.0.0.1:17851/api/health 最多 60 秒，最后告诉我服务状态、日志位置和访问地址。
 ```
 
 Agent 会依次完成下载或安全更新、环境检测、插件安装、服务启动和健康检查。没有终端执行能力的聊天机器人无法使用这种方式，请改用下面的命令安装。
@@ -214,18 +224,18 @@ Agent 插件可向 Canvas 注册自身已有的文本、图片和视频模型。
 
 ## 手动添加 API
 
-如果当前环境没有可发现的 Agent 模型，可在 Agent Canvas 的“设置 → AI 配置”中手动添加：
+兼容 macOS 原后端时，可在 Agent Canvas 的“设置 → AI 配置”中手动添加：
 
 - OpenAI 兼容 Base URL
 - API Key
 - 文本、图片和视频模型名称
 - 默认模型
 
-手动填写的 Base URL 和 API Key 会保存在本机数据目录的 `data/runtime-settings.json` 中。它是本地明文配置，请勿提交或共享 `.data` 目录；多用户设备建议限制权限：
+独立模式会把设置页内容保存在 `beemax-bridge/runtime-settings.json`，但为避免在运行时静默切换服务端密钥，当前生成路由只使用启动时发现的 Agent Provider 或下面的服务端环境变量。配置文件是本地明文，请勿提交或共享 `.data` 目录；多用户设备建议限制权限：
 
 ```bash
-chmod 700 .data .data/data
-chmod 600 .data/data/runtime-settings.json
+chmod 700 .data .data/beemax-bridge
+chmod 600 .data/beemax-bridge/runtime-settings.json
 ```
 
 也可以通过服务端环境变量配置图片 fallback：

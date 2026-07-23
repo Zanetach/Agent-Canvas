@@ -55,10 +55,14 @@ async function legacyRelaySettings(dataRoot) {
 
 const host = process.env.BEEMAX_BRIDGE_HOST || "127.0.0.1";
 const port = integerEnv("BEEMAX_BRIDGE_PORT", 17851);
-const upstreamUrl = process.env.BEEMAX_UPSTREAM_URL || "http://127.0.0.1:17852";
+const standalone = process.env.BEEMAX_STANDALONE === "1";
+const upstreamUrl = standalone
+  ? ""
+  : process.env.BEEMAX_UPSTREAM_URL || "http://127.0.0.1:17852";
 const dataRoot = process.env.INUX_DATA_DIR || path.resolve(".data");
 const dataDir = process.env.BEEMAX_BRIDGE_DATA_DIR || path.join(dataRoot, "beemax-bridge");
 const publicOrigin = process.env.BEEMAX_PUBLIC_ORIGIN || `http://${host}:${port}`;
+const frontendDir = process.env.BEEMAX_FRONTEND_DIR || "";
 
 const codexCommand = parseCommand();
 const codexTimeoutMs = integerEnv("BEEMAX_CODEX_TIMEOUT_MS", 300_000);
@@ -104,6 +108,7 @@ const server = createBridgeServer({
   providers,
   publicOrigin,
   upstreamUrl,
+  frontendDir,
 });
 
 server.on("error", (error) => {
@@ -113,6 +118,7 @@ server.on("error", (error) => {
 
 server.listen(port, host, () => {
   console.log(`[beemax-bridge] listening on ${publicOrigin}`);
+  if (standalone) console.log(`[beemax-bridge] standalone frontend: ${frontendDir}`);
   console.log(`[beemax-bridge] provider route: ${providers.map((provider) => provider.id).join(" -> ")}`);
 });
 
