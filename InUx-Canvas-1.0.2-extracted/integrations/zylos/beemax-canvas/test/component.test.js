@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 
-import { BeeMaxCanvasClient } from '../src/index.js';
+import { BeeMaxCanvasClient, registerAgentCapabilities } from '../src/index.js';
 
 const execFileAsync = promisify(execFile);
 const componentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -64,6 +64,37 @@ test('Zylos can discover BeeMax Canvas health and image capabilities through the
     assert.equal(result.canvas_url, api.origin);
     assert.equal(result.health.service, 'beemax-bridge');
     assert.equal(result.capabilities.image.generate.async, true);
+  } finally {
+    await api.close();
+  }
+});
+
+test('Zylos registers its Agent models without forwarding credentials', async () => {
+  let registered;
+  const api = await listen(async (request, response) => {
+    if (request.method === 'POST' && request.url === '/api/beemax/agent-plugins/register') {
+      registered = await bodyJson(request);
+      sendJson(response, { success: true, plugin: registered }, 201);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+
+  try {
+    const result = await registerAgentCapabilities({
+      baseUrl: api.origin,
+      endpoint: 'http://127.0.0.1:19999',
+      models: {
+        text: ['zylos-text'],
+        image: ['zylos-image'],
+        video: ['zylos-video'],
+      },
+      apiKey: 'must-not-cross-plugin-boundary',
+    });
+    assert.equal(result.success, true);
+    assert.equal(registered.id, 'zylos-agent');
+    assert.equal(Object.hasOwn(registered, 'apiKey'), false);
+    assert.equal(Object.hasOwn(registered, 'api_key'), false);
   } finally {
     await api.close();
   }

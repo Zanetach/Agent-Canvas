@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import threading
 import time
 import uuid
 import webbrowser
@@ -85,6 +86,27 @@ def _request_json(
         raise RuntimeError(f"BeeMax Canvas HTTP {exc.code}: {message}") from exc
     except URLError as exc:
         raise RuntimeError(f"无法连接 BeeMax Canvas（{_base_url()}）：{exc.reason}") from exc
+
+
+def register_agent_capabilities(capabilities: dict[str, Any]) -> dict[str, Any]:
+    """Publish Hermes model names to Canvas without copying provider credentials."""
+    models = capabilities.get("models") or {}
+    payload = {
+        "id": str(capabilities.get("id") or "hermes-agent").strip(),
+        "agent": "Hermes Agent",
+        "endpoint": str(capabilities.get("endpoint") or "").strip(),
+        "models": {
+            kind: [str(model).strip() for model in models.get(kind, []) if str(model).strip()]
+            for kind in ("text", "image", "video")
+        },
+        "capabilities": capabilities.get("capabilities") or {},
+    }
+    return _request_json(
+        "POST",
+        "/api/beemax/agent-plugins/register",
+        payload=payload,
+        timeout=_timeout(capabilities),
+    )
 
 
 def _multipart_file(path: Path) -> tuple[bytes, str]:
@@ -609,3 +631,27 @@ def register(ctx: Any) -> None:
             description=schema["description"],
             emoji=emoji,
         )
+    gateway = os.environ.get("BEEMAX_AGENT_GATEWAY_URL", "").strip()
+    raw_models = os.environ.get("BEEMAX_AGENT_MODELS_JSON", "").strip()
+    if gateway and raw_models:
+        def sync_capabilities() -> None:
+            for attempt in range(12):
+                try:
+                    register_agent_capabilities(
+                        {
+                            "id": os.environ.get("BEEMAX_AGENT_INSTANCE_ID", "hermes-agent"),
+                            "endpoint": gateway,
+                            "models": json.loads(raw_models),
+                            "timeout_seconds": 2,
+                        }
+                    )
+                    return
+                except Exception:
+                    if attempt < 11:
+                        time.sleep(5)
+
+        threading.Thread(
+            target=sync_capabilities,
+            name="beemax-agent-capability-sync",
+            daemon=True,
+        ).start()

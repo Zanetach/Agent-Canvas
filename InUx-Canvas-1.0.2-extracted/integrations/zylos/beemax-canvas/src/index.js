@@ -226,3 +226,24 @@ export async function runOperation(operation, options = {}) {
   const client = new BeeMaxCanvasClient(options);
   return client.submit(operation, options);
 }
+
+export async function registerAgentCapabilities(options = {}) {
+  const client = new BeeMaxCanvasClient(options);
+  const models = options.models || {};
+  return client.request('POST', '/api/beemax/agent-plugins/register', {
+    json: {
+      id: String(options.id || 'zylos-agent').trim(),
+      agent: 'Zylos Agent',
+      endpoint: String(options.endpoint || '').trim(),
+      models: Object.fromEntries(
+        ['text', 'image', 'video'].map((type) => [
+          type,
+          Array.isArray(models[type])
+            ? models[type].map((model) => String(model).trim()).filter(Boolean)
+            : [],
+        ]),
+      ),
+      capabilities: options.capabilities || {},
+    },
+  });
+}

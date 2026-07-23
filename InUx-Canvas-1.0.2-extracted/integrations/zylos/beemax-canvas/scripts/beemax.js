@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 
-import { BeeMaxCanvasClient } from '../src/index.js';
+import { BeeMaxCanvasClient, registerAgentCapabilities } from '../src/index.js';
 
 const OPERATIONS = new Set(['generate', 'references', 'edit', 'mask', 'outpaint', 'variation']);
 
@@ -90,6 +90,16 @@ async function main() {
     return;
   }
   const client = new BeeMaxCanvasClient(args);
+  const gateway = String(process.env.BEEMAX_AGENT_GATEWAY_URL || '').trim();
+  const rawModels = String(process.env.BEEMAX_AGENT_MODELS_JSON || '').trim();
+  if (gateway && rawModels) {
+    await registerAgentCapabilities({
+      ...args,
+      id: process.env.BEEMAX_AGENT_INSTANCE_ID || 'zylos-agent',
+      endpoint: gateway,
+      models: JSON.parse(rawModels),
+    });
+  }
   let result;
   if (args.command === 'status') result = await client.status();
   else if (args.command === 'import') result = await client.importImage(args.inputs[0]);

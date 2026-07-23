@@ -11277,6 +11277,20 @@ body {
   background: var(--bg-elevated);
   color: var(--fg-secondary);
 }
+.managed-agent-plugins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.managed-agent-plugins span {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--fg-secondary);
+  font-size: 12px;
+  padding: 6px 9px;
+}
 @media (width <= 680px) {
   .managed-provider-panel {
     grid-template-columns: auto 1fr;

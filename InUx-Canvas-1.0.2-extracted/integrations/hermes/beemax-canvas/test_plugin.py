@@ -87,6 +87,10 @@ class FakeCanvasHandler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "task": {"status": "cancelled"}})
         if self.path == "/api/task/task-1/retry":
             return self._json({"success": True, "task_id": "task-2", "retry_of": "task-1"})
+        if self.path == "/api/beemax/agent-plugins/register":
+            payload = json.loads(body)
+            self.server.last_plugin_payload = payload
+            return self._json({"success": True, "plugin": payload}, 201)
         return self._json({"success": False, "error": "not found"}, 404)
 
 
@@ -153,6 +157,23 @@ class BeeMaxCanvasPluginTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["health"]["service"], "beemax-bridge")
         self.assertTrue(result["capabilities"]["image"]["generate"]["async"])
+
+    def test_registers_hermes_models_with_canvas_without_credentials(self):
+        result = self.plugin.register_agent_capabilities(
+            {
+                "endpoint": "http://127.0.0.1:18888",
+                "models": {
+                    "text": ["glm-5"],
+                    "image": ["seedream-4.5"],
+                    "video": ["seedance-1.5-pro"],
+                },
+                "api_key": "must-not-cross-plugin-boundary",
+            }
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(self.server.last_plugin_payload["id"], "hermes-agent")
+        self.assertNotIn("api_key", self.server.last_plugin_payload)
+        self.assertNotIn("apiKey", self.server.last_plugin_payload)
 
     def test_bridge_generation_waits_for_completed_task(self):
         result = self.call(

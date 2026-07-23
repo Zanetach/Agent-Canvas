@@ -32,6 +32,8 @@ export BEEMAX_CANVAS_URL=http://127.0.0.1:17851
 
 BeeMax Bridge 启动时会自动读取 Hermes 当前默认 LLM 的模型名和 Provider 标识，并将它与 Codex `gpt-image-2` 合并显示为 `BeeMax Hermes + Codex Agent`。Canvas 的文本节点调用 Hermes CLI，图片节点调用 Codex；模型凭证仍由各自运行时管理，不会写入 Canvas 的 AI 配置。切换 Hermes 默认模型后需重启 BeeMax Bridge。
 
+如果 Hermes 环境还提供自己的文本、生图或视频网关，插件可在启动时调用 `register_agent_capabilities`，把三类模型名称自动同步到 Canvas。注册内容不包含 API Key，Canvas 只保存非敏感能力清单。
+
 文本节点连接或上传参考图时，Codex 先生成视觉摘要，Hermes 再依据摘要和用户任务输出最终文本；纯文本不经过视觉分析。参考图必须是 Canvas 资产或图片 Data URL，最多 10 张。
 
 ## 安装

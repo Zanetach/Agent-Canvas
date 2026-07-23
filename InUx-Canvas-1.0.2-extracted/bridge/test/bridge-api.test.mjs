@@ -1676,6 +1676,245 @@ test("managed BeeMax Codex provider exposes and serves text generation", async (
   }
 });
 
+test("local Agent plugins register text, image, and video models without exposing secrets", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-plugin-test-"));
+  const upstream = createServer((request, response) => {
+    if (request.url === "/api/admin/runtime-settings") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ providers: [] }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const upstreamUrl = await listen(upstream);
+  const server = createBridgeServer({
+    dataDir,
+    upstreamUrl,
+    providers: [{ id: "codex-native", async generate() {} }],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const registered = await fetch(`${baseUrl}/api/beemax/agent-plugins/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "hermes-local",
+        agent: "Hermes Agent",
+        endpoint: "http://127.0.0.1:34567",
+        apiKey: "must-never-be-accepted",
+        models: {
+          text: ["glm-5"],
+          image: ["doubao-seedream-4.5"],
+          video: ["doubao-seedance-1.5-pro"],
+        },
+      }),
+    });
+    assert.equal(registered.status, 201);
+    const registration = await registered.json();
+    assert.equal(registration.success, true);
+    assert.equal(registration.plugin.id, "hermes-local");
+    assert.equal("apiKey" in registration.plugin, false);
+
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    const managed = settings.providers.find(
+      (provider) => provider.id === "beemax-codex-agent",
+    );
+    assert.deepEqual(managed.textModels, ["glm-5"]);
+    assert.deepEqual(managed.imageModels, ["gpt-image-2", "doubao-seedream-4.5"]);
+    assert.deepEqual(managed.videoModels, ["doubao-seedance-1.5-pro"]);
+    assert.deepEqual(managed.agentPlugins, [
+      {
+        id: "hermes-local",
+        agent: "Hermes Agent",
+        status: "registered",
+        modelCount: 3,
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(settings), /must-never-be-accepted/);
+
+    const plugins = await fetch(`${baseUrl}/api/beemax/agent-plugins`).then((response) =>
+      response.json(),
+    );
+    assert.equal(plugins.plugins.length, 1);
+    assert.equal("apiKey" in plugins.plugins[0], false);
+    assert.equal("endpoint" in plugins.plugins[0], false);
+    const persisted = await readFile(path.join(dataDir, "agent-plugins.json"), "utf8");
+    assert.match(persisted, /hermes-local/);
+    assert.doesNotMatch(persisted, /must-never-be-accepted/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Agent plugin registration rejects remote gateways and invalid model types", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-plugin-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [{ id: "codex-native", async generate() {} }],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    for (const payload of [
+      {
+        id: "remote-plugin",
+        agent: "Remote Agent",
+        endpoint: "https://untrusted.example/v1",
+        models: { image: ["remote-image"] },
+      },
+      {
+        id: "invalid-models",
+        agent: "Local Agent",
+        endpoint: "http://127.0.0.1:34567",
+        models: { audio: ["unsupported-audio"] },
+      },
+      {
+        id: "credential-url",
+        agent: "Credential Agent",
+        endpoint: "http://user:secret@127.0.0.1:34567",
+        models: { text: ["credential-model"] },
+      },
+    ]) {
+      const response = await fetch(`${baseUrl}/api/beemax/agent-plugins/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.status, 422);
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("registered Agent plugin models execute through their owning local gateway", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-plugin-routing-test-"));
+  const gateway = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const payload = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/v1/text") {
+      response.end(JSON.stringify({ success: true, text: `agent:${payload.user_prompt}` }));
+      return;
+    }
+    if (request.url === "/v1/image") {
+      response.end(JSON.stringify({
+        success: true,
+        data_url: `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+      }));
+      return;
+    }
+    if (request.url === "/v1/video") {
+      response.end(JSON.stringify({ success: true, task_id: "agent-video-1" }));
+      return;
+    }
+    if (request.url === "/v1/task") {
+      response.end(JSON.stringify({
+        success: true,
+        task_id: payload.task_id,
+        status: "completed",
+        canonical_status: "success",
+        server_urls: ["http://127.0.0.1/video.mp4"],
+      }));
+      return;
+    }
+    response.end(JSON.stringify({ success: false, error: "not found" }));
+  });
+  const gatewayUrl = await listen(gateway);
+  const server = createBridgeServer({
+    dataDir,
+    providers: [{ id: "codex-native", async generate() { throw new Error("wrong provider"); } }],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    await fetch(`${baseUrl}/api/beemax/agent-plugins/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "routing-agent",
+        agent: "Routing Agent",
+        endpoint: gatewayUrl,
+        models: { text: ["agent-text"], image: ["agent-image"], video: ["agent-video"] },
+      }),
+    });
+
+    const textResponse = await fetch(`${baseUrl}/api/llm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider_id: "beemax-codex-agent",
+        model_name: "agent-text",
+        user_prompt: "hello",
+      }),
+    }).then((response) => response.json());
+    assert.equal(textResponse.response, "agent:hello");
+    assert.equal(textResponse.provider, "agent-plugin:routing-agent");
+
+    const imageSubmission = await fetch(`${baseUrl}/api/image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "agent image", model: "agent-image" }),
+    }).then((response) => response.json());
+    const imageTask = await waitForTask(baseUrl, imageSubmission.task_id);
+    assert.equal(imageTask.status, "completed");
+    assert.equal(imageTask.provider_id, "agent-plugin:routing-agent");
+
+    const videoSubmission = await fetch(`${baseUrl}/api/video`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "agent video", model: "agent-video" }),
+    }).then((response) => response.json());
+    assert.match(videoSubmission.task_id, /^agent_video_routing-agent_/);
+    const videoTask = await fetch(`${baseUrl}/api/task/${videoSubmission.task_id}`).then((response) =>
+      response.json(),
+    );
+    assert.equal(videoTask.data.status, "completed");
+    assert.equal(videoTask.data.task_id, videoSubmission.task_id);
+    assert.equal(videoTask.source, "agent-plugin:routing-agent");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => gateway.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("a model collision does not poison later Agent plugin registrations", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-plugin-queue-test-"));
+  const server = createBridgeServer({
+    dataDir,
+    providers: [{ id: "codex-native", async generate() {} }],
+  });
+  const register = (baseUrl, id, model) =>
+    fetch(`${baseUrl}/api/beemax/agent-plugins/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id,
+        agent: id,
+        endpoint: `http://127.0.0.1:${id === "first-agent" ? 31001 : 31002}`,
+        models: { text: [model] },
+      }),
+    });
+
+  try {
+    const baseUrl = await listen(server);
+    assert.equal((await register(baseUrl, "first-agent", "shared-model")).status, 201);
+    assert.equal((await register(baseUrl, "collision-agent", "shared-model")).status, 409);
+    assert.equal((await register(baseUrl, "later-agent", "different-model")).status, 201);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("Hermes text provider discovers the configured model without exposing credentials", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-test-"));
   const configFile = path.join(dataDir, "config.yaml");

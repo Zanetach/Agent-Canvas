@@ -45616,6 +45616,7 @@ var mT = 8192,
       defaultVideoModel: r.includes(e.defaultVideoModel)
         ? e.defaultVideoModel
         : r[0] || ``,
+      agentPlugins: Array.isArray(e.agentPlugins) ? e.agentPlugins : [],
     };
   },
   CT = (e = {}) => ({
@@ -46154,25 +46155,42 @@ function OT({
                             }),
                             (0, Q.jsxs)(`div`, {
                               children: [
-                                (0, Q.jsx)(`strong`, { children: `由 BeeMax 自动管理` }),
+                                (0, Q.jsx)(`strong`, { children: `Agent 能力已自动接入` }),
                                 (0, Q.jsx)(`p`, {
-                                  children: `文本与图片模型已经可以直接使用，无需填写 Base URL 或 API Key。`,
+                                  children: p.agentPlugins?.length
+                                    ? `已通过 ${p.agentPlugins.length} 个本机 Agent 插件发现模型，无需重复填写 Base URL 或 API Key。`
+                                    : `Codex 与 Hermes 的本机能力已经可以直接使用，无需填写 Base URL 或 API Key。`,
                                 }),
                                 (0, Q.jsxs)(`div`, {
                                   className: `managed-provider-capabilities`,
                                   children: [
-                                    (0, Q.jsx)(`span`, { children: `✓ 文本创作` }),
-                                    (0, Q.jsx)(`span`, { children: `✓ 图片生成` }),
-                                    (0, Q.jsx)(`span`, { className: `pending`, children: `视频需单独配置` }),
+                                    p.textModels.length > 0 &&
+                                      (0, Q.jsxs)(`span`, { children: [`✓ 文本 `, p.textModels.length] }),
+                                    p.imageModels.length > 0 &&
+                                      (0, Q.jsxs)(`span`, { children: [`✓ 图片 `, p.imageModels.length] }),
+                                    p.videoModels.length > 0
+                                      ? (0, Q.jsxs)(`span`, { children: [`✓ 视频 `, p.videoModels.length] })
+                                      : (0, Q.jsx)(`span`, { className: `pending`, children: `未发现视频模型` }),
                                   ],
                                 }),
+                                p.agentPlugins?.length > 0 &&
+                                  (0, Q.jsx)(`div`, {
+                                    className: `managed-agent-plugins`,
+                                    children: p.agentPlugins.map((e) =>
+                                      (0, Q.jsxs)(
+                                        `span`,
+                                        { children: [e.agent, ` · `, e.modelCount, ` 个模型`] },
+                                        e.id,
+                                      ),
+                                    ),
+                                  }),
                               ],
                             }),
                             (0, Q.jsx)(`button`, {
                               type: `button`,
                               className: `api-save-btn`,
                               onClick: () => _(`视频生成服务`),
-                              children: `新增视频配置`,
+                              children: `手动添加 API`,
                             }),
                           ],
                         })
