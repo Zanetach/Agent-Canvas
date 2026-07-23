@@ -109,6 +109,16 @@ def register_agent_capabilities(capabilities: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def discover_agent_capabilities(capabilities: dict[str, Any]) -> dict[str, Any]:
+    """Ask Canvas to read the non-secret model manifest from a local Agent gateway."""
+    return _request_json(
+        "POST",
+        "/api/beemax/agent-plugins/discover",
+        payload={"endpoint": str(capabilities.get("endpoint") or "").strip()},
+        timeout=_timeout(capabilities),
+    )
+
+
 def _multipart_file(path: Path) -> tuple[bytes, str]:
     boundary = f"----BeeMaxHermes{uuid.uuid4().hex}"
     content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -633,18 +643,23 @@ def register(ctx: Any) -> None:
         )
     gateway = os.environ.get("BEEMAX_AGENT_GATEWAY_URL", "").strip()
     raw_models = os.environ.get("BEEMAX_AGENT_MODELS_JSON", "").strip()
-    if gateway and raw_models:
+    if gateway:
         def sync_capabilities() -> None:
             for attempt in range(12):
                 try:
-                    register_agent_capabilities(
-                        {
-                            "id": os.environ.get("BEEMAX_AGENT_INSTANCE_ID", "hermes-agent"),
-                            "endpoint": gateway,
-                            "models": json.loads(raw_models),
-                            "timeout_seconds": 2,
-                        }
-                    )
+                    if raw_models:
+                        register_agent_capabilities(
+                            {
+                                "id": os.environ.get("BEEMAX_AGENT_INSTANCE_ID", "hermes-agent"),
+                                "endpoint": gateway,
+                                "models": json.loads(raw_models),
+                                "timeout_seconds": 2,
+                            }
+                        )
+                    else:
+                        discover_agent_capabilities(
+                            {"endpoint": gateway, "timeout_seconds": 2}
+                        )
                     return
                 except Exception:
                     if attempt < 11:

@@ -24,16 +24,16 @@ const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MAX_TOTAL_INPUT_IMAGE_BYTES = 50 * 1024 * 1024;
 const MANAGED_CODEX_PROVIDER = Object.freeze({
   id: "beemax-codex-agent",
-  name: "BeeMax Hermes + Codex Agent",
+  name: "BeeMax Agent Providers",
   protocol: "beemax",
   enabled: true,
   baseUrl: "",
   apiKey: "",
   textModels: [],
-  imageModels: ["gpt-image-2"],
+  imageModels: [],
   videoModels: [],
   defaultTextModel: "",
-  defaultImageModel: "gpt-image-2",
+  defaultImageModel: "",
   defaultVideoModel: "",
 });
 const AGENT_MODEL_TYPES = Object.freeze(["text", "image", "video"]);
@@ -54,17 +54,28 @@ function normalizedModelList(value, label) {
   return [...new Set(models)];
 }
 
-function normalizeAgentPlugin(payload) {
-  const id = String(payload?.id || "").trim();
-  const agent = String(payload?.agent || "").trim();
-  if (!/^[a-z0-9][a-z0-9._-]{1,63}$/i.test(id) || !agent || agent.length > 80) {
-    const error = new Error("Agent 插件必须提供合法的 id 和 agent 名称");
-    error.statusCode = 422;
-    throw error;
+async function readResponseTextLimited(response, maxBytes, errorMessage) {
+  const declaredBytes = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+    await response.body?.cancel();
+    throw new Error(errorMessage);
   }
+  const chunks = [];
+  let totalBytes = 0;
+  for await (const chunk of response.body || []) {
+    totalBytes += chunk.length;
+    if (totalBytes > maxBytes) {
+      throw new Error(errorMessage);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, totalBytes).toString("utf8");
+}
+
+function normalizedAgentEndpoint(value) {
   let endpoint;
   try {
-    endpoint = new URL(String(payload?.endpoint || ""));
+    endpoint = new URL(String(value || ""));
   } catch {
     const error = new Error("Agent 插件必须提供本机 HTTP 网关地址");
     error.statusCode = 422;
@@ -82,6 +93,18 @@ function normalizeAgentPlugin(payload) {
     error.statusCode = 422;
     throw error;
   }
+  return endpoint.toString().replace(/\/$/, "");
+}
+
+function normalizeAgentPlugin(payload) {
+  const id = String(payload?.id || "").trim();
+  const agent = String(payload?.agent || "").trim();
+  if (!/^[a-z0-9][a-z0-9._-]{1,63}$/i.test(id) || !agent || agent.length > 80) {
+    const error = new Error("Agent 插件必须提供合法的 id 和 agent 名称");
+    error.statusCode = 422;
+    throw error;
+  }
+  const endpoint = normalizedAgentEndpoint(payload?.endpoint);
   const models = payload?.models;
   if (!models || typeof models !== "object" || Array.isArray(models)) {
     const error = new Error("Agent 插件必须提供 models 对象");
@@ -117,7 +140,7 @@ function normalizeAgentPlugin(payload) {
   return Object.freeze({
     id,
     agent,
-    endpoint: endpoint.toString().replace(/\/$/, ""),
+    endpoint,
     models: Object.freeze(normalizedModels),
     capabilities: Object.freeze({ image: imageCapabilities }),
     status: "registered",
@@ -481,11 +504,10 @@ export function createBridgeServer({
   publicOrigin = "",
   upstreamUrl = "",
   frontendDir = "",
+  readiness = null,
 }) {
   if (!dataDir) throw new Error("dataDir is required");
-  if (!Array.isArray(providers) || providers.length === 0) {
-    throw new Error("at least one image provider is required");
-  }
+  if (!Array.isArray(providers)) throw new Error("providers must be an array");
 
   const tasks = new Map();
   const controllers = new Map();
@@ -507,6 +529,9 @@ export function createBridgeServer({
     (provider) =>
       provider.capabilities?.generate !== false && typeof provider.generate === "function",
   );
+  const baseImageModels = [
+    ...new Set(baseImageProviders.flatMap((provider) => provider.imageModels || ["gpt-image-2"])),
+  ];
   const agentPlugins = new Map();
   const pluginImageProviders = new Map();
   const pluginTasks = new Map();
@@ -530,8 +555,11 @@ export function createBridgeServer({
       signal: AbortSignal.any(signals),
       redirect: "error",
     });
-    const text = await result.text();
-    if (Buffer.byteLength(text) > maxBytes) throw new Error("Agent 插件响应超过安全限制");
+    const text = await readResponseTextLimited(
+      result,
+      maxBytes,
+      "Agent 插件响应超过安全限制",
+    );
     let body;
     try {
       body = JSON.parse(text || "{}");
@@ -575,15 +603,15 @@ export function createBridgeServer({
   let managedProvider = Object.freeze({
     ...MANAGED_CODEX_PROVIDER,
     textModels,
+    imageModels: baseImageModels,
     defaultTextModel: textModels[0] || "",
+    defaultImageModel: baseImageModels[0] || "",
   });
   function refreshManagedProvider() {
     const plugins = [...agentPlugins.values()];
     const discovered = (type) => plugins.flatMap((plugin) => plugin.models[type]);
     const nextTextModels = [...new Set([...textModels, ...discovered("text")])];
-    const nextImageModels = [
-      ...new Set([...MANAGED_CODEX_PROVIDER.imageModels, ...discovered("image")]),
-    ];
+    const nextImageModels = [...new Set([...baseImageModels, ...discovered("image")])];
     const nextVideoModels = [...new Set(discovered("video"))];
     managedProvider = Object.freeze({
       ...MANAGED_CODEX_PROVIDER,
@@ -656,6 +684,75 @@ export function createBridgeServer({
       "utf8",
     );
     await rename(temporary, agentPluginsPath);
+  }
+
+  async function registerAgentPlugin(payload) {
+    const plugin = normalizeAgentPlugin(payload);
+    const commitRegistration = async () => {
+      for (const current of agentPlugins.values()) {
+        if (current.id === plugin.id) continue;
+        for (const type of AGENT_MODEL_TYPES) {
+          const collision = plugin.models[type].find((model) => current.models[type].includes(model));
+          if (collision) {
+            const error = new Error(`模型 ${collision} 已由 Agent 插件 ${current.id} 注册`);
+            error.statusCode = 409;
+            throw error;
+          }
+        }
+      }
+      const previous = agentPlugins.get(plugin.id);
+      agentPlugins.set(plugin.id, plugin);
+      refreshManagedProvider();
+      try {
+        await persistAgentPlugins();
+      } catch (error) {
+        if (previous) agentPlugins.set(plugin.id, previous);
+        else agentPlugins.delete(plugin.id);
+        refreshManagedProvider();
+        throw error;
+      }
+    };
+    const currentWrite = pluginRegistryWrite.then(commitRegistration, commitRegistration);
+    pluginRegistryWrite = currentWrite.catch(() => {});
+    await currentWrite;
+    return plugin;
+  }
+
+  async function discoverAgentPlugin(endpointValue) {
+    const endpoint = normalizedAgentEndpoint(endpointValue);
+    const manifestResponse = await fetch(`${endpoint}/v1/manifest`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(2_000),
+      redirect: "error",
+    });
+    let text;
+    try {
+      text = await readResponseTextLimited(
+        manifestResponse,
+        MAX_JSON_BYTES,
+        "Agent Manifest 超过 2 MB 限制",
+      );
+    } catch (error) {
+      if (error.message === "Agent Manifest 超过 2 MB 限制") error.statusCode = 413;
+      throw error;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(text || "{}");
+    } catch {
+      const error = new Error("Agent 网关返回了无效 Manifest");
+      error.statusCode = 502;
+      throw error;
+    }
+    if (!manifestResponse.ok || payload?.success === false) {
+      const error = new Error(payload?.error || `Agent Manifest 请求失败 (HTTP ${manifestResponse.status})`);
+      error.statusCode = 502;
+      throw error;
+    }
+    const manifest = payload?.manifest && typeof payload.manifest === "object"
+      ? payload.manifest
+      : payload;
+    return registerAgentPlugin({ ...manifest, endpoint });
   }
 
   async function ensurePluginTasksLoaded() {
@@ -1276,8 +1373,9 @@ export function createBridgeServer({
       const url = new URL(request.url || "/", "http://127.0.0.1");
 
       if (request.method === "GET" && url.pathname === "/api/beemax/health") {
-        sendJson(response, 200, {
-          status: "ok",
+        const ready = readiness?.ready !== false;
+        sendJson(response, ready ? 200 : 503, {
+          status: ready ? "ok" : "starting",
           service: "beemax-bridge",
           providers: [
             ...providers.map((provider) => provider.id),
@@ -1288,8 +1386,9 @@ export function createBridgeServer({
       }
 
       if (standalone && request.method === "GET" && url.pathname === "/api/health") {
-        sendJson(response, 200, {
-          status: "ok",
+        const ready = readiness?.ready !== false;
+        sendJson(response, ready ? 200 : 503, {
+          status: ready ? "ok" : "starting",
           service: "inux-canvas",
           mode: "standalone",
         });
@@ -1392,34 +1491,24 @@ export function createBridgeServer({
           sendJson(response, 403, { success: false, error: "Agent 插件仅允许本机 JSON 注册" });
           return;
         }
-        const plugin = normalizeAgentPlugin(await readJson(request));
-        const commitRegistration = async () => {
-          for (const current of agentPlugins.values()) {
-            if (current.id === plugin.id) continue;
-            for (const type of AGENT_MODEL_TYPES) {
-              const collision = plugin.models[type].find((model) => current.models[type].includes(model));
-              if (collision) {
-                const error = new Error(`模型 ${collision} 已由 Agent 插件 ${current.id} 注册`);
-                error.statusCode = 409;
-                throw error;
-              }
-            }
-          }
-          const previous = agentPlugins.get(plugin.id);
-          agentPlugins.set(plugin.id, plugin);
-          refreshManagedProvider();
-          try {
-            await persistAgentPlugins();
-          } catch (error) {
-            if (previous) agentPlugins.set(plugin.id, previous);
-            else agentPlugins.delete(plugin.id);
-            refreshManagedProvider();
-            throw error;
-          }
-        };
-        const currentWrite = pluginRegistryWrite.then(commitRegistration, commitRegistration);
-        pluginRegistryWrite = currentWrite.catch(() => {});
-        await currentWrite;
+        const plugin = await registerAgentPlugin(await readJson(request));
+        sendJson(response, 201, { success: true, plugin: publicAgentPlugin(plugin) });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/api/beemax/agent-plugins/discover"
+      ) {
+        if (
+          !isLoopbackPeer(request.socket.remoteAddress) ||
+          !String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")
+        ) {
+          sendJson(response, 403, { success: false, error: "Agent 发现仅允许本机 JSON 请求" });
+          return;
+        }
+        const payload = await readJson(request);
+        const plugin = await discoverAgentPlugin(payload.endpoint);
         sendJson(response, 201, { success: true, plugin: publicAgentPlugin(plugin) });
         return;
       }

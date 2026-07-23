@@ -9,9 +9,31 @@ const DEFAULT_CODEX_AUTH_FILE = path.join(
   "auth.json",
 );
 const DEFAULT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex";
+const DEFAULT_CODEX_COMMAND = [process.env.CODEX_CLI_PATH || "codex"];
 const DEFAULT_HERMES_CONFIG_FILE = path.join(homedir(), ".hermes", "config.yaml");
 const DEFAULT_HERMES_COMMAND = [path.join(homedir(), ".local", "bin", "hermes")];
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
+
+async function ensureCommandExecutable(command, label) {
+  const executable = command[0];
+  if (path.isAbsolute(executable)) {
+    await access(executable, fsConstants.X_OK);
+    return;
+  }
+  const candidates = String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((directory) => path.join(directory, executable));
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, fsConstants.X_OK);
+      return;
+    } catch {
+      // Continue searching PATH.
+    }
+  }
+  throw new Error(`${label} command not found: ${executable}`);
+}
 
 function aspectRatio(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -202,6 +224,13 @@ function hermesModelSelections(config) {
   });
 }
 
+function codexConfiguredModel(config) {
+  const match = String(config || "").match(
+    /^model\s*=\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9._:/-]+))\s*(?:#.*)?$/m,
+  );
+  return String(match?.[1] || match?.[2] || match?.[3] || "").trim();
+}
+
 async function createHermesImageAttachment(imageUrls) {
   const dataUrls = (Array.isArray(imageUrls) ? imageUrls : []).filter((value) =>
     String(value || "").startsWith("data:image/"),
@@ -231,16 +260,16 @@ async function createHermesImageAttachment(imageUrls) {
   }
 }
 
-function runHermesText(command, args, { signal, timeoutMs }) {
+function runTextCommand(command, args, { signal, timeoutMs, input = "", label = "Hermes" }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(signal.reason || new Error("Hermes 文本任务已取消"));
+      reject(signal.reason || new Error(`${label} 文本任务已取消`));
       return;
     }
     const [executable, ...baseArgs] = command;
     const child = spawn(executable, [...baseArgs, ...args], {
       env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const stdout = [];
     const stderr = [];
@@ -259,6 +288,10 @@ function runHermesText(command, args, { signal, timeoutMs }) {
       timedOut = true;
       terminate();
     }, timeoutMs);
+    child.stdin.on("error", () => {
+      // Process exit handling below reports the authoritative command failure.
+    });
+    child.stdin.end(input);
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
     child.stdout.on("data", (chunk) => {
@@ -282,22 +315,22 @@ function runHermesText(command, args, { signal, timeoutMs }) {
       clearTimeout(forceKill);
       signal?.removeEventListener("abort", abort);
       if (signal?.aborted) {
-        reject(signal.reason || new Error("Hermes 文本任务已取消"));
+        reject(signal.reason || new Error(`${label} 文本任务已取消`));
         return;
       }
       if (outputBytes > maxOutputBytes) {
-        reject(new Error("Hermes 文本输出超过 2 MB 限制"));
+        reject(new Error(`${label} 文本输出超过 2 MB 限制`));
         return;
       }
       if (timedOut) {
-        reject(new Error(`Hermes 文本生成超时（${Math.round(timeoutMs / 1000)} 秒）`));
+        reject(new Error(`${label} 文本生成超时（${Math.round(timeoutMs / 1000)} 秒）`));
         return;
       }
       if (code !== 0) {
         const detail = Buffer.concat(stderr).toString("utf8").trim();
         reject(
           new Error(
-            `Hermes 文本生成失败 (${code ?? processSignal ?? "unknown"})${detail ? `: ${detail.slice(-800)}` : ""}`,
+            `${label} 文本生成失败 (${code ?? processSignal ?? "unknown"})${detail ? `: ${detail.slice(-800)}` : ""}`,
           ),
         );
         return;
@@ -307,12 +340,80 @@ function runHermesText(command, args, { signal, timeoutMs }) {
         .replace(/\u001b\[[0-9;]*m/g, "")
         .trim();
       if (!text) {
-        reject(new Error("Hermes 未返回文本"));
+        reject(new Error(`${label} 未返回文本`));
         return;
       }
       resolve(text);
     });
   });
+}
+
+export async function createCodexTextProvider({
+  configFile = path.join(process.env.CODEX_HOME || path.join(homedir(), ".codex"), "config.toml"),
+  command = DEFAULT_CODEX_COMMAND,
+  timeoutMs = 300_000,
+} = {}) {
+  if (
+    !Array.isArray(command) ||
+    command.length === 0 ||
+    command.some((part) => typeof part !== "string" || !part.trim())
+  ) {
+    throw new Error("Codex command must be an array of non-empty strings");
+  }
+  await ensureCommandExecutable(command, "Codex");
+  const model = codexConfiguredModel(await readFile(configFile, "utf8"));
+  if (!model) throw new Error("Codex 尚未配置默认文本模型");
+  return {
+    id: "codex-cli",
+    capabilities: {
+      generate: false,
+      text: true,
+      cancel: true,
+    },
+    textModels: [model],
+    defaultTextModel: model,
+    async generateText(payload, { signal } = {}) {
+      const requestedModel = String(payload.model || model);
+      if (requestedModel !== model) throw new Error(`Codex 未配置文本模型：${requestedModel}`);
+      if (Array.isArray(payload.imageUrls) && payload.imageUrls.length > 0) {
+        throw new Error("Codex CLI 文本 Provider 暂不接受 Canvas 图片附件");
+      }
+      const prompt = [
+        payload.systemPrompt ? `系统指令：\n${payload.systemPrompt}` : "",
+        `用户请求：\n${String(payload.userPrompt || "")}`,
+        "直接输出最终文本，不要描述执行过程。",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const workingDirectory = await mkdtemp(path.join(tmpdir(), "beemax-codex-text-"));
+      try {
+        const args = [
+          "exec",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--sandbox",
+          "read-only",
+          "--ignore-rules",
+          "--color",
+          "never",
+          "-C",
+          workingDirectory,
+          "-m",
+          requestedModel,
+          "-",
+        ];
+        const text = await runTextCommand(command, args, {
+          signal,
+          timeoutMs,
+          input: prompt,
+          label: "Codex",
+        });
+        return { text, model: requestedModel, provider: "codex-cli" };
+      } finally {
+        await rm(workingDirectory, { recursive: true, force: true });
+      }
+    },
+  };
 }
 
 export async function createHermesTextProvider({
@@ -328,9 +429,7 @@ export async function createHermesTextProvider({
   ) {
     throw new Error("Hermes command must be an array of non-empty strings");
   }
-  if (path.isAbsolute(command[0])) {
-    await access(command[0], fsConstants.X_OK);
-  }
+  await ensureCommandExecutable(command, "Hermes");
   const selections = hermesModelSelections(await readFile(configFile, "utf8"));
   const selection = selections[0];
   if (!selection?.model) throw new Error("Hermes 尚未配置默认文本模型");
@@ -392,7 +491,7 @@ export async function createHermesTextProvider({
             ]
           : ["-z", combinedPrompt, "-m", model, "--ignore-rules"];
         if (requestedSelection.provider) args.push("--provider", requestedSelection.provider);
-        const text = await runHermesText(command, args, { signal, timeoutMs });
+        const text = await runTextCommand(command, args, { signal, timeoutMs });
         return { text, model, provider: requestedSelection.provider };
       } finally {
         if (attachment) {

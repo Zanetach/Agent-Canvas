@@ -2,7 +2,11 @@
 
 import { spawn } from 'node:child_process';
 
-import { BeeMaxCanvasClient, registerAgentCapabilities } from '../src/index.js';
+import {
+  BeeMaxCanvasClient,
+  discoverAgentCapabilities,
+  registerAgentCapabilities,
+} from '../src/index.js';
 
 const OPERATIONS = new Set(['generate', 'references', 'edit', 'mask', 'outpaint', 'variation']);
 
@@ -92,13 +96,17 @@ async function main() {
   const client = new BeeMaxCanvasClient(args);
   const gateway = String(process.env.BEEMAX_AGENT_GATEWAY_URL || '').trim();
   const rawModels = String(process.env.BEEMAX_AGENT_MODELS_JSON || '').trim();
-  if (gateway && rawModels) {
-    await registerAgentCapabilities({
-      ...args,
-      id: process.env.BEEMAX_AGENT_INSTANCE_ID || 'zylos-agent',
-      endpoint: gateway,
-      models: JSON.parse(rawModels),
-    });
+  if (gateway) {
+    if (rawModels) {
+      await registerAgentCapabilities({
+        ...args,
+        id: process.env.BEEMAX_AGENT_INSTANCE_ID || 'zylos-agent',
+        endpoint: gateway,
+        models: JSON.parse(rawModels),
+      });
+    } else {
+      await discoverAgentCapabilities({ ...args, endpoint: gateway });
+    }
   }
   let result;
   if (args.command === 'status') result = await client.status();

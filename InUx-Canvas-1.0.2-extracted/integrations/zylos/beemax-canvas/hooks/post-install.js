@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { registerAgentCapabilities } from '../src/index.js';
+import { discoverAgentCapabilities, registerAgentCapabilities } from '../src/index.js';
 
 const zylosHome =
   process.env.ZYLOS_DIR || process.env.ZYLOS_HOME || path.join(os.homedir(), 'zylos');
@@ -25,14 +25,18 @@ if (!fs.existsSync(configPath)) {
 
 const gateway = String(process.env.BEEMAX_AGENT_GATEWAY_URL || '').trim();
 const rawModels = String(process.env.BEEMAX_AGENT_MODELS_JSON || '').trim();
-if (gateway && rawModels) {
+if (gateway) {
   try {
-    await registerAgentCapabilities({
-      id: process.env.BEEMAX_AGENT_INSTANCE_ID || 'zylos-agent',
-      endpoint: gateway,
-      models: JSON.parse(rawModels),
-      timeoutSeconds: 2,
-    });
+    if (rawModels) {
+      await registerAgentCapabilities({
+        id: process.env.BEEMAX_AGENT_INSTANCE_ID || 'zylos-agent',
+        endpoint: gateway,
+        models: JSON.parse(rawModels),
+        timeoutSeconds: 2,
+      });
+    } else {
+      await discoverAgentCapabilities({ endpoint: gateway, timeoutSeconds: 2 });
+    }
     console.log('[beemax-canvas] Registered Zylos model capabilities with Canvas');
   } catch (error) {
     console.warn(`[beemax-canvas] Canvas registration deferred: ${error.message}`);

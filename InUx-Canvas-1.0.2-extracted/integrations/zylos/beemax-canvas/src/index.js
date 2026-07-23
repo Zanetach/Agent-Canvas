@@ -247,3 +247,12 @@ export async function registerAgentCapabilities(options = {}) {
     },
   });
 }
+
+export async function discoverAgentCapabilities(options = {}) {
+  const client = new BeeMaxCanvasClient(options);
+  return client.request('POST', '/api/beemax/agent-plugins/discover', {
+    json: {
+      endpoint: String(options.endpoint || '').trim(),
+    },
+  });
+}

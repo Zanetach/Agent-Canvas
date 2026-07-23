@@ -91,6 +91,23 @@ class FakeCanvasHandler(BaseHTTPRequestHandler):
             payload = json.loads(body)
             self.server.last_plugin_payload = payload
             return self._json({"success": True, "plugin": payload}, 201)
+        if self.path == "/api/beemax/agent-plugins/discover":
+            payload = json.loads(body)
+            self.server.last_discovery_payload = payload
+            return self._json(
+                {
+                    "success": True,
+                    "plugin": {
+                        "id": "hermes-agent",
+                        "models": {
+                            "text": ["glm-5"],
+                            "image": ["seedream-4.5"],
+                            "video": ["seedance-1.5-pro"],
+                        },
+                    },
+                },
+                201,
+            )
         return self._json({"success": False, "error": "not found"}, 404)
 
 
@@ -174,6 +191,16 @@ class BeeMaxCanvasPluginTests(unittest.TestCase):
         self.assertEqual(self.server.last_plugin_payload["id"], "hermes-agent")
         self.assertNotIn("api_key", self.server.last_plugin_payload)
         self.assertNotIn("apiKey", self.server.last_plugin_payload)
+
+    def test_discovers_hermes_gateway_models_without_copying_a_model_list(self):
+        result = self.plugin.discover_agent_capabilities(
+            {"endpoint": "http://127.0.0.1:18888"}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            self.server.last_discovery_payload,
+            {"endpoint": "http://127.0.0.1:18888"},
+        )
 
     def test_bridge_generation_waits_for_completed_task(self):
         result = self.call(

@@ -1,4 +1,7 @@
 #!/bin/sh
 
 printf 'hermes-python %s\n' "$*" >>"${INSTALLER_TEST_LOG:?}"
+if [ "${1:-}" = "-c" ]; then
+  exit 0
+fi
 exit "${INSTALLER_HERMES_STATUS:-0}"

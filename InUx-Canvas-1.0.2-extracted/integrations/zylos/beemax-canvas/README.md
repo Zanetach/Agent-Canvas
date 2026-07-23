@@ -70,10 +70,12 @@ routing and authentication. The current route is Codex native first, then the
 configured relay fallback. Zylos only receives task metadata and local Canvas
 asset URLs.
 
-Zylos hosts that expose their own local model gateway can call the exported
-`registerAgentCapabilities` function at component startup. Text, image, and
-video model names then appear automatically in Canvas settings while all
-credentials remain inside Zylos.
+Zylos hosts that expose their own local model gateway should implement
+`GET /v1/manifest` and set `BEEMAX_AGENT_GATEWAY_URL`. The component calls the
+exported `discoverAgentCapabilities` function at startup, so text, image, and
+video model names appear automatically in Canvas without copying a model list.
+Older hosts can continue using `registerAgentCapabilities`. Credentials always
+remain inside Zylos.
 
 ## Development
 

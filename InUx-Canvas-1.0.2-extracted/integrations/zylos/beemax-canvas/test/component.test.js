@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 
-import { BeeMaxCanvasClient, registerAgentCapabilities } from '../src/index.js';
+import {
+  BeeMaxCanvasClient,
+  discoverAgentCapabilities,
+  registerAgentCapabilities,
+} from '../src/index.js';
 
 const execFileAsync = promisify(execFile);
 const componentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,6 +99,41 @@ test('Zylos registers its Agent models without forwarding credentials', async ()
     assert.equal(registered.id, 'zylos-agent');
     assert.equal(Object.hasOwn(registered, 'apiKey'), false);
     assert.equal(Object.hasOwn(registered, 'api_key'), false);
+  } finally {
+    await api.close();
+  }
+});
+
+test('Zylos discovers all gateway models without requiring a copied model list', async () => {
+  let discovery;
+  const api = await listen(async (request, response) => {
+    if (request.method === 'POST' && request.url === '/api/beemax/agent-plugins/discover') {
+      discovery = await bodyJson(request);
+      sendJson(response, {
+        success: true,
+        plugin: {
+          id: 'zylos-agent',
+          models: {
+            text: ['zylos-text'],
+            image: ['zylos-image'],
+            video: ['zylos-video'],
+          },
+        },
+      }, 201);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+
+  try {
+    const result = await discoverAgentCapabilities({
+      baseUrl: api.origin,
+      endpoint: 'http://127.0.0.1:19999',
+      apiKey: 'must-not-cross-plugin-boundary',
+    });
+    assert.equal(result.success, true);
+    assert.deepEqual(discovery, { endpoint: 'http://127.0.0.1:19999' });
+    assert.equal(Object.hasOwn(discovery, 'apiKey'), false);
   } finally {
     await api.close();
   }

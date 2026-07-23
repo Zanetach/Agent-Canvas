@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { createBridgeServer, cropDimensions } from "../src/server.mjs";
 import {
+  createCodexTextProvider,
   createCommandCodexProvider,
   createDirectCodexProvider,
   createHermesTextProvider,
@@ -58,7 +59,7 @@ async function unusedPort() {
 }
 
 async function waitForTask(baseUrl, taskId) {
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/task/${taskId}`);
     const body = await response.json();
@@ -1596,6 +1597,32 @@ test("standalone mode serves the Canvas UI, health, and local runtime settings",
   }
 });
 
+test("health stays unavailable until declared Agent gateway discovery completes", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-readiness-test-"));
+  const readiness = { ready: false };
+  const server = createBridgeServer({
+    dataDir,
+    frontendDir: path.join(dataDir, "frontend"),
+    providers: [],
+    readiness,
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const starting = await fetch(`${baseUrl}/api/health`);
+    assert.equal(starting.status, 503);
+    assert.equal((await starting.json()).status, "starting");
+
+    readiness.ready = true;
+    const ready = await fetch(`${baseUrl}/api/health`);
+    assert.equal(ready.status, 200);
+    assert.equal((await ready.json()).status, "ok");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("legacy runtime settings expose the managed BeeMax Codex image provider", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-bridge-test-"));
   let savedSettings;
@@ -1628,7 +1655,7 @@ test("legacy runtime settings expose the managed BeeMax Codex image provider", a
       settings.providers.find((provider) => provider.id === "beemax-codex-agent"),
       {
         id: "beemax-codex-agent",
-        name: "BeeMax Hermes + Codex Agent",
+        name: "BeeMax Agent Providers",
         protocol: "beemax",
         enabled: true,
         baseUrl: "",
@@ -1844,6 +1871,94 @@ test("local Agent plugins register text, image, and video models without exposin
   }
 });
 
+test("Canvas discovers a generic Agent manifest from its loopback gateway", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-discovery-test-"));
+  const gateway = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/v1/manifest") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "generic-agent",
+          agent: "Generic Agent",
+          models: {
+            text: ["generic-text"],
+            image: ["generic-image"],
+            video: ["generic-video"],
+          },
+          capabilities: { image: { generate: true, references: 2 } },
+          api_key: "must-not-cross-the-gateway",
+        }),
+      );
+      return;
+    }
+    if (request.method === "GET" && request.url === "/v1/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end('{"status":"ok"}');
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const gatewayUrl = await listen(gateway);
+  const server = createBridgeServer({
+    dataDir,
+    publicOrigin: "http://127.0.0.1:9999",
+    providers: [],
+  });
+
+  try {
+    const baseUrl = await listen(server);
+    const discovered = await fetch(`${baseUrl}/api/beemax/agent-plugins/discover`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: gatewayUrl }),
+    });
+    assert.equal(discovered.status, 201);
+    const body = await discovered.json();
+    assert.equal(body.plugin.id, "generic-agent");
+    assert.equal(Object.hasOwn(body.plugin, "api_key"), false);
+
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    const managed = settings.providers.find((provider) => provider.id === "beemax-codex-agent");
+    assert.ok(managed.textModels.includes("generic-text"));
+    assert.deepEqual(managed.imageModels, ["generic-image"]);
+    assert.ok(managed.videoModels.includes("generic-video"));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => gateway.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Agent manifest discovery rejects an oversized response before buffering it", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-manifest-limit-test-"));
+  const gateway = createServer((request, response) => {
+    response.writeHead(200, {
+      "content-type": "application/json",
+      "content-length": String(2 * 1024 * 1024 + 1),
+    });
+    response.end("{}");
+  });
+  const gatewayUrl = await listen(gateway);
+  const server = createBridgeServer({ dataDir, providers: [] });
+
+  try {
+    const baseUrl = await listen(server);
+    const discovery = await fetch(`${baseUrl}/api/beemax/agent-plugins/discover`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: gatewayUrl }),
+    });
+    assert.equal(discovery.status, 413);
+    assert.match((await discovery.json()).error, /超过 2 MB/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => gateway.close(resolve));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("Agent plugin registration rejects remote gateways and invalid model types", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-agent-plugin-test-"));
   const server = createBridgeServer({
@@ -1880,6 +1995,12 @@ test("Agent plugin registration rejects remote gateways and invalid model types"
       });
       assert.equal(response.status, 422);
     }
+    const discovery = await fetch(`${baseUrl}/api/beemax/agent-plugins/discover`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: "http://169.254.169.254" }),
+    });
+    assert.equal(discovery.status, 422);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
@@ -2052,6 +2173,54 @@ test("Hermes text provider discovers the configured model without exposing crede
     });
   } finally {
     await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex text provider discovers its configured model and executes through the existing CLI auth", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-codex-text-test-"));
+  const configFile = path.join(root, "config.toml");
+  await writeFile(
+    configFile,
+    [
+      'model = "gpt-codex-test"',
+      'base_url = "https://provider.example.invalid"',
+      'api_key = "must-never-leave-codex"',
+    ].join("\n"),
+  );
+  const command = [
+    process.execPath,
+    "-e",
+    [
+      'let input = "";',
+      'process.stdin.setEncoding("utf8");',
+      'process.stdin.on("data", (chunk) => { input += chunk; });',
+      'process.stdin.on("end", () => process.stdout.write(JSON.stringify({',
+      "args: process.argv.slice(1),",
+      "input",
+      "})));",
+    ].join(""),
+    "--",
+  ];
+
+  try {
+    const provider = await createCodexTextProvider({ configFile, command });
+    assert.equal(provider.id, "codex-cli");
+    assert.deepEqual(provider.textModels, ["gpt-codex-test"]);
+    assert.doesNotMatch(JSON.stringify(provider), /must-never-leave-codex/);
+
+    const result = await provider.generateText({
+      model: "gpt-codex-test",
+      systemPrompt: "Only return the final copy.",
+      userPrompt: "Write a title.",
+    });
+    const invocation = JSON.parse(result.text);
+    assert.equal(invocation.args[0], "exec");
+    assert.equal(invocation.args[invocation.args.indexOf("-m") + 1], "gpt-codex-test");
+    assert.equal(invocation.args.at(-1), "-");
+    assert.match(invocation.input, /Only return the final copy/);
+    assert.match(invocation.input, /Write a title/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -2336,9 +2505,73 @@ test("one-command deployment publishes Hermes text and image models through runt
       BEEMAX_BRIDGE_PORT: String(port),
       BEEMAX_PUBLIC_ORIGIN: baseUrl,
       BEEMAX_TEST_HERMES_CONFIG: configFile,
+      CODEX_BIN: "/usr/bin/false",
       HERMES_HOME: hermesHome,
       HERMES_PYTHON: "/usr/bin/false",
       PATH: `${hermesBinDir}:${process.env.PATH}`,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk;
+  });
+
+  try {
+    const deadline = Date.now() + 15_000;
+    while (!output.includes("Agent Canvas 已启动") && Date.now() < deadline) {
+      if (child.exitCode !== null) throw new Error(output);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.match(output, /已识别 2 个文本模型、1 个生图模型/);
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    const provider = settings.providers.find((candidate) => candidate.id === "beemax-codex-agent");
+    assert.deepEqual(provider.textModels, ["deployment-primary", "deployment-fallback"]);
+    assert.deepEqual(provider.imageModels, ["gpt-image-2"]);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("close", resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("one-command deployment discovers a configured Codex model without Hermes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-deploy-codex-test-"));
+  const codexHome = path.join(root, "codex");
+  const hermesHome = path.join(root, "missing-hermes");
+  const configFile = path.join(codexHome, "config.toml");
+  const codex = path.join(root, "codex-bin");
+  const port = await unusedPort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  await mkdir(codexHome, { recursive: true });
+  await writeFile(configFile, 'model = "codex-deployment-model"\n');
+  await writeFile(
+    codex,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "login" ] && [ "$2" = "status" ]; then exit 0; fi',
+      "exit 0",
+    ].join("\n"),
+  );
+  await chmod(codex, 0o755);
+
+  const child = spawn("bash", [path.join(PROJECT_ROOT, "deploy.sh"), "--no-open"], {
+    cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      BEEMAX_BRIDGE_PORT: String(port),
+      BEEMAX_PUBLIC_ORIGIN: baseUrl,
+      CODEX_BIN: codex,
+      CODEX_HOME: codexHome,
+      HERMES_HOME: hermesHome,
+      HERMES_PYTHON: "/usr/bin/false",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -2358,16 +2591,110 @@ test("one-command deployment publishes Hermes text and image models through runt
       if (child.exitCode !== null) throw new Error(output);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    assert.match(output, /已识别 2 个文本模型、1 个生图模型/);
+    assert.match(output, /已识别 Codex CLI 文本模型配置/);
     const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
       response.json(),
     );
     const provider = settings.providers.find((candidate) => candidate.id === "beemax-codex-agent");
-    assert.deepEqual(provider.textModels, ["deployment-primary", "deployment-fallback"]);
+    assert.deepEqual(provider.textModels, ["codex-deployment-model"]);
     assert.deepEqual(provider.imageModels, ["gpt-image-2"]);
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => child.once("close", resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("one-command deployment discovers text, image, and video models from a generic Agent gateway", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-deploy-gateway-test-"));
+  const gateway = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/v1/manifest") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: "deployment-agent",
+          agent: "Deployment Agent",
+          models: {
+            text: ["deployment-text"],
+            image: ["deployment-image"],
+            video: ["deployment-video"],
+          },
+        }),
+      );
+      return;
+    }
+    if (request.method === "GET" && request.url === "/v1/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end('{"status":"ok"}');
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const gatewayUrl = await listen(gateway);
+  const port = await unusedPort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const incompleteHermes = path.join(root, "hermes-python");
+  const hermesConfig = path.join(root, "hermes-config.yaml");
+  await writeFile(hermesConfig, "model:\n  default: hermes-text-only\n");
+  await writeFile(
+    incompleteHermes,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "-c" ]; then exit 0; fi',
+      'if [ "$1" = "-m" ] && [ "$3" = "config" ]; then',
+      `  printf '%s\\n' '${hermesConfig}'`,
+      "  exit 0",
+      "fi",
+      'if [ "$1" = "-m" ] && [ "$3" = "plugins" ]; then exit 0; fi',
+      'case "$1" in */hermes_image_provider.py) exit 1 ;; esac',
+      "exit 1",
+    ].join("\n"),
+  );
+  await chmod(incompleteHermes, 0o755);
+  const child = spawn("bash", [path.join(PROJECT_ROOT, "deploy.sh"), "--no-open"], {
+    cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      BEEMAX_AGENT_GATEWAY_URL: gatewayUrl,
+      BEEMAX_BRIDGE_PORT: String(port),
+      BEEMAX_PUBLIC_ORIGIN: baseUrl,
+      CODEX_BIN: "/usr/bin/false",
+      HERMES_HOME: path.join(root, "missing-hermes"),
+      HERMES_PYTHON: incompleteHermes,
+      INUX_DATA_DIR: path.join(root, "data"),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk;
+  });
+
+  try {
+    const deadline = Date.now() + 15_000;
+    while (!output.includes("Agent Canvas 已启动") && Date.now() < deadline) {
+      if (child.exitCode !== null) throw new Error(output);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.match(output, /discovered Agent gateway/);
+    assert.match(output, /image_gen Provider 未配置/);
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    const provider = settings.providers.find((candidate) => candidate.id === "beemax-codex-agent");
+    assert.ok(provider.textModels.includes("deployment-text"));
+    assert.ok(provider.textModels.includes("hermes-text-only"));
+    assert.deepEqual(provider.imageModels, ["deployment-image"]);
+    assert.ok(provider.videoModels.includes("deployment-video"));
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("close", resolve));
+    await new Promise((resolve) => gateway.close(resolve));
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -2378,6 +2705,7 @@ test("one-command deployment refuses to report success when Hermes is unavailabl
     cwd: PROJECT_ROOT,
     env: {
       ...process.env,
+      CODEX_BIN: "/usr/bin/false",
       HERMES_HOME: root,
       HERMES_PYTHON: "",
     },

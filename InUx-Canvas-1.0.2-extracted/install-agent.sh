@@ -45,20 +45,47 @@ find_codex() {
 }
 
 find_hermes_python() {
-  if [[ -n "${HERMES_PYTHON:-}" && -x "${HERMES_PYTHON}" ]]; then
-    print -- "${HERMES_PYTHON}"
-    return 0
+  local hermes_root="${HERMES_HOME:-$HOME/.hermes}"
+  local cli_path="${HERMES_CLI:-}"
+  if [[ -z "$cli_path" ]] && command -v hermes >/dev/null 2>&1; then
+    cli_path="$(command -v hermes)"
+  fi
+
+  local cli_python=""
+  if [[ -n "$cli_path" && -x "$cli_path" ]]; then
+    local shebang
+    IFS= read -r shebang <"$cli_path" || true
+    if [[ "$shebang" == '#!/usr/bin/env '* ]]; then
+      cli_python="$(command -v "${shebang#\#!/usr/bin/env }" 2>/dev/null || true)"
+    elif [[ "$shebang" == '#!/'* ]]; then
+      cli_python="${shebang#\#!}"
+      cli_python="${cli_python%% *}"
+    fi
   fi
 
   local candidate
   for candidate in \
-    "$HOME/.hermes/hermes-agent/venv/bin/python" \
+    "${HERMES_PYTHON:-}" \
+    "$cli_python" \
+    "$hermes_root/hermes-agent/venv/bin/python" \
+    "$hermes_root/hermes-agent/.venv/bin/python" \
     "$HOME/hermes-agent/venv/bin/python"; do
-    if [[ -x "$candidate" ]]; then
+    if [[ -n "$candidate" && -x "$candidate" ]] &&
+      "$candidate" -c 'import hermes_cli' >/dev/null 2>&1; then
       print -- "$candidate"
       return 0
     fi
   done
+
+  while IFS= read -r candidate; do
+    if "$candidate" -c 'import hermes_cli' >/dev/null 2>&1; then
+      print -- "$candidate"
+      return 0
+    fi
+  done < <(
+    find "$hermes_root" -maxdepth 5 -type f \
+      \( -name python -o -name python3 \) -perm -u+x 2>/dev/null
+  )
 
   return 1
 }
@@ -155,7 +182,7 @@ install_hermes() {
   fi
 
   local source_dir="$ROOT_DIR/integrations/hermes/beemax-canvas"
-  local target_dir="$HOME/.hermes/plugins/beemax-canvas"
+  local target_dir="${HERMES_HOME:-$HOME/.hermes}/plugins/beemax-canvas"
 
   if [[ ! -d "$source_dir" ]]; then
     warn "找不到 Hermes 插件源目录：$source_dir"
