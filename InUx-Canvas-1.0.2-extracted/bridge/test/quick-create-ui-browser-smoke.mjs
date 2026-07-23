@@ -15,7 +15,8 @@ try {
       simpleActions: Boolean(document.querySelector('.quick-create-simple-actions')),
       simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
       moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
-      templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')),
+      templatesOpen: document.querySelector('.quick-create-template-primary')?.open || false,
+      templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent),
       templateCount: document.querySelectorAll('.quick-create-template-primary .quick-create-template-card').length,
       templateNames: [...document.querySelectorAll('.quick-create-template-primary .quick-create-template-card strong')].map((node) => node.textContent.trim()),
       templateInsideMore: Boolean(document.querySelector('.quick-create-more-settings .quick-create-template-card')),
@@ -30,7 +31,8 @@ try {
   assert.equal(initial.simpleActions, true);
   assert.match(initial.simpleHint, /直接文字生成/);
   assert.equal(initial.moreSettingsOpen, false);
-  assert.equal(initial.templateVisible, true);
+  assert.equal(initial.templatesOpen, false);
+  assert.equal(initial.templateVisible, false);
   assert.ok(
     initial.templateCount > 1,
     `creation template library should expose multiple templates; found ${initial.templateCount}`,
@@ -59,6 +61,43 @@ try {
     "生成变体",
   ]);
   assert.match(initial.promptPlaceholder, /简单描述你想要的图片/);
+
+  await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.click()`);
+  await wait(50);
+  assert.equal(
+    await evaluate(`document.querySelector('.quick-create-template-primary')?.open || false`),
+    true,
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent)`),
+    true,
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.innerText || ''`),
+    /创作模板[\s\S]*4 个/,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await evaluate(`(() => {
+        const style = getComputedStyle(document.querySelector('.quick-create-template-grid'));
+        return JSON.stringify({ maxHeight: style.maxHeight, overflowY: style.overflowY });
+      })()`),
+    ),
+    { maxHeight: "236px", overflowY: "auto" },
+  );
+
+  await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.click()`);
+  await wait(50);
+  assert.equal(
+    await evaluate(`document.querySelector('.quick-create-template-primary')?.open || false`),
+    false,
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent)`),
+    false,
+  );
+  await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.click()`);
+  await wait(50);
 
   await evaluate(
     `document.querySelector('[data-template-id="starter-social-cover"]')?.click()`,

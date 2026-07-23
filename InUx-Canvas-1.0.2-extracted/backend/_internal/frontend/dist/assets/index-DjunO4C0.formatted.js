@@ -63237,12 +63237,20 @@ function QuickCreatePanel_({
               ),
             ),
           }),
-          (0, Q.jsxs)(`section`, {
+          (0, Q.jsxs)(`details`, {
             className: `quick-create-template-shortcut quick-create-template-primary`,
             children: [
-              (0, Q.jsx)(`span`, {
-                className: `quick-create-mode-section-title`,
-                children: `创作模板`,
+              (0, Q.jsxs)(`summary`, {
+                className: `quick-create-template-summary`,
+                children: [
+                  (0, Q.jsx)(`span`, {
+                    className: `quick-create-mode-section-title`,
+                    children: `创作模板`,
+                  }),
+                  (0, Q.jsx)(`small`, {
+                    children: `${quickCreateStarterTemplates_.filter((e) => e.type === r).length + (r === `image` ? 1 : 0)} 个`,
+                  }),
+                ],
               }),
               (0, Q.jsxs)(`div`, {
                 className: `quick-create-template-grid`,
