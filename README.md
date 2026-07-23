@@ -68,6 +68,18 @@ http://127.0.0.1:17851
 
 ## Agent 一键安装
 
+### 交给 Agent 自动安装（推荐）
+
+把下面整句话发送给 Codex、Hermes、Zylos 或其他能够执行终端命令的 Agent：
+
+```text
+请安装 Agent Canvas：如果本机没有项目，请从 https://github.com/Zanetach/Agent-Canvas.git 克隆最新 main；如果目录已存在，请先确认 origin 与该地址一致并检查 git status，仅在工作区干净时执行 git pull --ff-only，否则立即停止并向我报告，禁止 reset、stash、删除或覆盖本地改动；进入 InUx-Canvas-1.0.2-extracted 后运行 ./install-agent.sh all 自动检测并配置当前环境中的 Agent，再使用可靠的后台任务方式运行 ./start-web.sh --no-open，记录日志和 PID，轮询 http://127.0.0.1:17851/api/beemax/health 最多 60 秒，最后告诉我各 Agent 的安装结果、服务状态、日志位置和访问地址。
+```
+
+Agent 会依次完成下载或安全更新、环境检测、插件安装、服务启动和健康检查。没有终端执行能力的聊天机器人无法使用这种方式，请改用下面的命令安装。
+
+### 使用终端命令安装
+
 进入 `InUx-Canvas-1.0.2-extracted` 后，只需选择当前使用的 Agent：
 
 ```bash
