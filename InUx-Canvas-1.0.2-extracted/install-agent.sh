@@ -9,7 +9,7 @@ usage() {
   cat <<'EOF'
 用法：./install-agent.sh [codex|hermes|zylos|all]
 
-  codex   检测 Codex，并复用或完成登录
+  codex   复用已配置的 Codex 生图命令 Provider，或检测现有 CLI 登录态
   hermes  安装并启用 BeeMax Canvas Hermes 插件
   zylos   安装 BeeMax Canvas Zylos 组件
   all     自动检测并安装当前环境中已有的 Agent（默认）
@@ -63,7 +63,76 @@ find_hermes_python() {
   return 1
 }
 
+validate_codex_command_provider() {
+  source "$ROOT_DIR/bridge/node-runtime.zsh"
+  local node_bin
+  if ! node_bin="$(beemax_resolve_node)"; then
+    warn "无法校验 Codex 生图命令 Provider：缺少 Node.js 20+。"
+    return 1
+  fi
+
+  local validation_error
+  if ! validation_error="$(
+    BEEMAX_PROVIDER_COMMAND_JSON="$BEEMAX_CODEX_PROVIDER_COMMAND_JSON" \
+      BEEMAX_PROVIDER_CAPABILITIES_JSON="${BEEMAX_CODEX_PROVIDER_CAPABILITIES_JSON:-}" \
+      "$node_bin" -e '
+        const fs = require("node:fs");
+        const path = require("node:path");
+        let command;
+        try {
+          command = JSON.parse(process.env.BEEMAX_PROVIDER_COMMAND_JSON || "");
+        } catch {
+          process.stderr.write("必须是合法 JSON");
+          process.exit(1);
+        }
+        if (!Array.isArray(command) || command.length === 0 || command.some((part) => typeof part !== "string" || !part)) {
+          process.stderr.write("必须是非空字符串数组");
+          process.exit(1);
+        }
+        const executable = command[0];
+        const candidates = executable.includes("/")
+          ? [path.resolve(executable)]
+          : (process.env.PATH || "").split(path.delimiter).map((directory) => path.join(directory, executable));
+        const usable = candidates.some((candidate) => {
+          try {
+            fs.accessSync(candidate, fs.constants.X_OK);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        if (!usable) {
+          process.stderr.write(`入口不可执行：${executable}`);
+          process.exit(1);
+        }
+        const rawCapabilities = process.env.BEEMAX_PROVIDER_CAPABILITIES_JSON || "";
+        if (rawCapabilities) {
+          let capabilities;
+          try {
+            capabilities = JSON.parse(rawCapabilities);
+          } catch {
+            process.stderr.write("能力声明必须是合法 JSON");
+            process.exit(1);
+          }
+          if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) {
+            process.stderr.write("能力声明必须是 JSON 对象");
+            process.exit(1);
+          }
+        }
+      ' 2>&1
+  )"; then
+    warn "Codex 生图命令 Provider 配置无效：$validation_error"
+    return 1
+  fi
+}
+
 install_codex() {
+  if [[ -n "${BEEMAX_CODEX_PROVIDER_COMMAND_JSON:-}" ]]; then
+    validate_codex_command_provider || return 1
+    info "检测到已配置的 Codex 生图命令 Provider，无需 Codex CLI 登录。"
+    return 0
+  fi
+
   local codex_bin
   if ! codex_bin="$(find_codex)"; then
     return 2
@@ -73,9 +142,9 @@ install_codex() {
   if "$codex_bin" login status >/dev/null 2>&1; then
     info "Codex 已登录，可直接使用 Agent Canvas。"
   else
-    info "Codex 尚未登录，正在打开登录流程……"
-    "$codex_bin" login || return $?
-    info "Codex 登录完成。"
+    warn "检测到 Codex CLI，但没有可复用的 CLI 登录态。安装器不会自动启动浏览器登录。"
+    warn "无图形服务器请提供 BEEMAX_CODEX_PROVIDER_COMMAND_JSON，或安装 Agent 插件注册本机生图网关。"
+    return 3
   fi
 }
 
@@ -119,29 +188,31 @@ run_explicit() {
   if "$installer"; then
     return 0
   else
-    local status=$?
-    if [[ "$status" -eq 2 ]]; then
+    local exit_code=$?
+    if [[ "$exit_code" -eq 2 ]]; then
       warn "当前环境未检测到 $name。请先安装 $name，再重新运行此命令。"
+    elif [[ "$exit_code" -eq 3 ]]; then
+      warn "当前环境未检测到可直接使用的 $name Provider。"
     else
       warn "$name 安装失败，请查看上方错误信息。"
     fi
-    return "$status"
+    return "$exit_code"
   fi
 }
 
 run_all() {
   local installed=0
   local failed=0
-  local status
+  local exit_code
 
   if install_codex; then
     (( installed += 1 ))
   else
-    status=$?
-    if [[ "$status" -eq 2 ]]; then
-      info "未检测到 Codex，已跳过。"
+    exit_code=$?
+    if [[ "$exit_code" -eq 2 || "$exit_code" -eq 3 ]]; then
+      info "未检测到可直接使用的 Codex 生图 Provider，已跳过。"
     else
-      warn "Codex 安装失败（退出码 $status），继续处理其他 Agent。"
+      warn "Codex 安装失败（退出码 $exit_code），继续处理其他 Agent。"
       (( failed += 1 ))
     fi
   fi
@@ -149,11 +220,11 @@ run_all() {
   if install_hermes; then
     (( installed += 1 ))
   else
-    status=$?
-    if [[ "$status" -eq 2 ]]; then
+    exit_code=$?
+    if [[ "$exit_code" -eq 2 ]]; then
       info "未检测到 Hermes，已跳过。"
     else
-      warn "Hermes 安装失败（退出码 $status），继续处理其他 Agent。"
+      warn "Hermes 安装失败（退出码 $exit_code），继续处理其他 Agent。"
       (( failed += 1 ))
     fi
   fi
@@ -161,11 +232,11 @@ run_all() {
   if install_zylos; then
     (( installed += 1 ))
   else
-    status=$?
-    if [[ "$status" -eq 2 ]]; then
+    exit_code=$?
+    if [[ "$exit_code" -eq 2 ]]; then
       info "未检测到 Zylos，已跳过。"
     else
-      warn "Zylos 安装失败（退出码 $status），继续处理其他 Agent。"
+      warn "Zylos 安装失败（退出码 $exit_code），继续处理其他 Agent。"
       (( failed += 1 ))
     fi
   fi
