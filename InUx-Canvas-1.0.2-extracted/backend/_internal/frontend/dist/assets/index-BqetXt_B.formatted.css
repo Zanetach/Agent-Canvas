@@ -9552,6 +9552,11 @@ body {
   color: var(--fg-secondary);
   font-size: 12px;
 }
+.quick-create-template-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .quick-create-template-card {
   align-items: center;
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-surface));
@@ -9896,6 +9901,9 @@ body {
   }
   .quick-create-template-card {
     grid-template-columns: auto 1fr;
+  }
+  .quick-create-template-grid {
+    grid-template-columns: 1fr;
   }
   .quick-create-template-card em {
     grid-column: 2;

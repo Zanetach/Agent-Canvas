@@ -62750,7 +62750,7 @@ var quickCreateModes_ = Object.freeze([
   },
   {
     id: `poster`,
-    label: `商业海报`,
+    label: `商业海报定制`,
     icon: `apps`,
     group: `template`,
     description: `基于主描述选择海报风格，应用模板后再统一生成。`,
@@ -62838,6 +62838,8 @@ var quickCreateModes_ = Object.freeze([
       description: `适合活动宣传、新品发布和中文品牌传播`,
       icon: `image`,
       type: `image`,
+      aspectRatio: `3:4`,
+      resolution: `1k`,
       prompt: `一张高级简洁的产品发布海报，主体居中，品牌留白充足，中文标题清晰，3:4`,
     },
     {
@@ -62846,6 +62848,8 @@ var quickCreateModes_ = Object.freeze([
       description: `快速生成醒目的小红书或公众号封面`,
       icon: `apps`,
       type: `image`,
+      aspectRatio: `3:4`,
+      resolution: `1k`,
       prompt: `一张明亮有层次的中文社媒封面，醒目大标题，现代编辑设计，3:4`,
     },
     {
@@ -62854,6 +62858,8 @@ var quickCreateModes_ = Object.freeze([
       description: `快速生成干净聚焦的电商商品展示图`,
       icon: `image`,
       type: `image`,
+      aspectRatio: `1:1`,
+      resolution: `1k`,
       prompt: `一张干净高级的商品主图，产品居中，柔和棚拍光，背景简洁，细节清晰，1:1`,
     },
     {
@@ -62862,6 +62868,8 @@ var quickCreateModes_ = Object.freeze([
       description: `先写好镜头，再连接视频生成服务`,
       icon: `video`,
       type: `video`,
+      aspectRatio: `16:9`,
+      resolution: `720p`,
       prompt: `镜头缓慢推近夜晚城市天台上的人物，霓虹灯倒影，电影感，8 秒`,
     },
   ]),
@@ -63049,6 +63057,19 @@ function QuickCreatePanel_({
     H = (0, v.useCallback)((e) => {
       (c(e.prompt || ``), g(`3:4`), D(`模板 Prompt 已生成，可继续补充后直接创作`), T(`success`));
     }, []),
+    quickApplyStarterTemplate = (0, v.useCallback)((e) => {
+      let t = e.type === `video` ? `video` : `image`,
+        n = e.aspectRatio || (t === `video` ? `16:9` : `3:4`),
+        r = e.resolution || (t === `video` ? `720p` : `1k`);
+      (i(t),
+        o(`generate`),
+        c(e.prompt || ``),
+        g(n),
+        y(r),
+        D(`已应用「${e.name}」，可继续补充后直接创作`),
+        T(`success`),
+        window.requestAnimationFrame(() => quickPromptRef.current?.focus()));
+    }, []),
     U = (0, v.useCallback)(async () => {
       let t = s.trim();
       if (!t) {
@@ -63198,45 +63219,78 @@ function QuickCreatePanel_({
               ),
             ),
           }),
-          r === `image` &&
-            (0, Q.jsxs)(`section`, {
-              className: `quick-create-template-shortcut quick-create-template-primary`,
-              children: [
-                (0, Q.jsx)(`span`, {
-                  className: `quick-create-mode-section-title`,
-                  children: `创作模板`,
-                }),
-                (0, Q.jsxs)(`button`, {
-                  ref: quickPosterShortcutRef,
-                  type: `button`,
-                  className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
-                  "aria-pressed": a === `poster`,
-                  onClick: () => quickSelectMode(quickPosterMaterial_.id),
-                  children: [
-                    (0, Q.jsx)(`span`, {
-                      className: `quick-create-template-card-icon`,
-                      children: (0, Q.jsx)($, {
-                        name: quickPosterMaterial_.icon,
-                        size: 18,
-                      }),
-                    }),
-                    (0, Q.jsxs)(`div`, {
+          (0, Q.jsxs)(`section`, {
+            className: `quick-create-template-shortcut quick-create-template-primary`,
+            children: [
+              (0, Q.jsx)(`span`, {
+                className: `quick-create-mode-section-title`,
+                children: `创作模板`,
+              }),
+              (0, Q.jsxs)(`div`, {
+                className: `quick-create-template-grid`,
+                children: [
+                  r === `image` &&
+                    (0, Q.jsxs)(`button`, {
+                      ref: quickPosterShortcutRef,
+                      type: `button`,
+                      className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
+                      "aria-pressed": a === `poster`,
+                      "data-template-id": `commercial-poster`,
+                      onClick: () => quickSelectMode(quickPosterMaterial_.id),
                       children: [
-                        (0, Q.jsx)(`strong`, {
-                          children: quickPosterMaterial_.label,
-                        }),
                         (0, Q.jsx)(`span`, {
-                          children: quickPosterMaterial_.materialDescription,
+                          className: `quick-create-template-card-icon`,
+                          children: (0, Q.jsx)($, {
+                            name: quickPosterMaterial_.icon,
+                            size: 18,
+                          }),
+                        }),
+                        (0, Q.jsxs)(`div`, {
+                          children: [
+                            (0, Q.jsx)(`strong`, {
+                              children: quickPosterMaterial_.label,
+                            }),
+                            (0, Q.jsx)(`span`, {
+                              children: quickPosterMaterial_.materialDescription,
+                            }),
+                          ],
+                        }),
+                        (0, Q.jsx)(`em`, {
+                          children: quickPosterMaterial_.materialAction,
                         }),
                       ],
                     }),
-                    (0, Q.jsx)(`em`, {
-                      children: quickPosterMaterial_.materialAction,
-                    }),
-                  ],
-                }),
-              ],
-            }),
+                  ...quickCreateStarterTemplates_
+                    .filter((e) => e.type === r)
+                    .map((e) =>
+                      (0, Q.jsxs)(
+                        `button`,
+                        {
+                          type: `button`,
+                          className: `quick-create-template-card quick-create-starter-template-card`,
+                          "data-template-id": e.id,
+                          onClick: () => quickApplyStarterTemplate(e),
+                          children: [
+                            (0, Q.jsx)(`span`, {
+                              className: `quick-create-template-card-icon`,
+                              children: (0, Q.jsx)($, { name: e.icon, size: 18 }),
+                            }),
+                            (0, Q.jsxs)(`div`, {
+                              children: [
+                                (0, Q.jsx)(`strong`, { children: e.name }),
+                                (0, Q.jsx)(`span`, { children: e.description }),
+                              ],
+                            }),
+                            (0, Q.jsx)(`em`, { children: `使用模板 →` }),
+                          ],
+                        },
+                        e.id,
+                      ),
+                    ),
+                ],
+              }),
+            ],
+          }),
           r === `video` && quickCapabilityBlocked &&
             (0, Q.jsxs)(`div`, {
               className: `quick-create-capability-alert`,

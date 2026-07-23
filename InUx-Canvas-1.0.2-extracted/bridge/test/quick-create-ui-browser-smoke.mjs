@@ -16,6 +16,8 @@ try {
       simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
       moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
       templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')),
+      templateCount: document.querySelectorAll('.quick-create-template-primary .quick-create-template-card').length,
+      templateNames: [...document.querySelectorAll('.quick-create-template-primary .quick-create-template-card strong')].map((node) => node.textContent.trim()),
       templateInsideMore: Boolean(document.querySelector('.quick-create-more-settings .quick-create-template-card')),
       templateHeading: document.querySelector('.quick-create-template-primary .quick-create-mode-section-title')?.innerText || '',
       tabs: [...document.querySelectorAll('.quick-create-type-tab')].map((element) => element.innerText),
@@ -29,6 +31,21 @@ try {
   assert.match(initial.simpleHint, /直接文字生成/);
   assert.equal(initial.moreSettingsOpen, false);
   assert.equal(initial.templateVisible, true);
+  assert.ok(
+    initial.templateCount > 1,
+    `creation template library should expose multiple templates; found ${initial.templateCount}`,
+  );
+  for (const requiredTemplate of [
+    "商业海报定制",
+    "中文商业海报",
+    "社交媒体封面",
+    "商品主图",
+  ]) {
+    assert.ok(
+      initial.templateNames.includes(requiredTemplate),
+      `creation template library should include ${requiredTemplate}`,
+    );
+  }
   assert.equal(initial.templateInsideMore, false);
   assert.equal(initial.templateHeading, '创作模板');
   assert.deepEqual(initial.tabs, ["图片", "视频"]);
@@ -42,6 +59,20 @@ try {
     "生成变体",
   ]);
   assert.match(initial.promptPlaceholder, /简单描述你想要的图片/);
+
+  await evaluate(
+    `document.querySelector('[data-template-id="starter-social-cover"]')?.click()`,
+  );
+  await wait(50);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
+    /中文社媒封面/,
+    "starter template should backfill the homepage prompt",
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-message')?.innerText || ''`),
+    /已应用「社交媒体封面」/,
+  );
 
   await evaluate(`(async () => {
     const canvas = document.createElement('canvas');
@@ -206,7 +237,27 @@ try {
   await wait(50);
   assert.equal(
     await evaluate(`Boolean(document.querySelector('.quick-create-template-primary'))`),
-    false,
+    true,
+  );
+  assert.equal(
+    await evaluate(`document.querySelectorAll('.quick-create-template-primary .quick-create-template-card').length`),
+    1,
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-template-primary')?.innerText || ''`),
+    /短视频镜头/,
+  );
+  await evaluate(
+    `document.querySelector('[data-template-id="starter-video-shot"]')?.click()`,
+  );
+  await wait(50);
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
+    /镜头缓慢推近夜晚城市天台/,
+  );
+  assert.equal(
+    await evaluate(`document.querySelector('[aria-label="画面比例"]')?.value`),
+    "16:9",
   );
   assert.equal(
     await evaluate(`Boolean(document.querySelector('[aria-label="视频时长"]'))`),
