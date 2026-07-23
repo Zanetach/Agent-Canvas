@@ -1,0 +1,9 @@
+#!/bin/sh
+
+printf 'codex %s\n' "$*" >>"${INSTALLER_TEST_LOG:?}"
+if [ "$*" = "login status" ]; then
+  exit "${INSTALLER_CODEX_STATUS:-0}"
+fi
+if [ "$*" = "login" ]; then
+  exit "${INSTALLER_CODEX_LOGIN_STATUS:-0}"
+fi

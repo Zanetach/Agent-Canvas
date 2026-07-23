@@ -66,7 +66,43 @@ http://127.0.0.1:17851
 
 该命令不会关闭 macOS Gatekeeper。
 
-## Codex 免 Key 接入
+## Agent 一键安装
+
+进入 `InUx-Canvas-1.0.2-extracted` 后，只需选择当前使用的 Agent：
+
+```bash
+./install-agent.sh codex
+./install-agent.sh hermes
+./install-agent.sh zylos
+```
+
+如果同一环境安装了多个 Agent，可以一次自动检测并配置：
+
+```bash
+./install-agent.sh all
+```
+
+不传参数也等同于 `all`。安装器会跳过当前环境中不存在的 Agent，并逐项显示安装结果：
+
+| Agent | 一键安装执行的操作 |
+| --- | --- |
+| Codex | 检测 Codex CLI，复用已有登录状态；未登录时打开官方登录流程 |
+| Hermes | 复制 BeeMax Canvas 插件到 Hermes 插件目录并启用 |
+| Zylos | 向 Zylos 注册 BeeMax Canvas 组件 |
+
+安装器可重复运行，用于更新插件或修复安装。完成后启动或重新启动 Agent Canvas：
+
+```bash
+./start-web.sh
+```
+
+Hermes 默认检测 `~/.hermes/hermes-agent/venv/bin/python`；如果安装在其他位置，请在安装前指定：
+
+```bash
+HERMES_PYTHON="/path/to/hermes-agent/venv/bin/python" ./install-agent.sh hermes
+```
+
+## Codex 免 Key 接入（手动方式）
 
 Agent Canvas 可以复用本机 Codex CLI 的登录状态，无需在设置页填写 OpenAI API Key。
 
@@ -90,7 +126,7 @@ codex login
 /Applications/ChatGPT.app/Contents/Resources/codex login
 ```
 
-## Hermes Agent 安装
+## Hermes Agent 安装（手动方式）
 
 Hermes 插件位于 `integrations/hermes/beemax-canvas`。
 
@@ -107,7 +143,7 @@ rsync -a --delete \
 
 详细说明见 [Hermes 插件文档](InUx-Canvas-1.0.2-extracted/integrations/hermes/beemax-canvas/README.md)。
 
-## Zylos 安装
+## Zylos 安装（手动方式）
 
 ```bash
 ./integrations/zylos/install-beemax-canvas.sh
@@ -181,10 +217,11 @@ INUX_DATA_DIR="$HOME/.agent-canvas" \
 ## 测试
 
 ```bash
+./test-install-agent.sh
 ./test-web.sh
 ```
 
-`test-web.sh` 覆盖 Bridge API、Codex Provider、图片任务和浏览器界面：
+`test-install-agent.sh` 覆盖 Codex、Hermes、Zylos 和自动检测安装流程；`test-web.sh` 覆盖 Bridge API、Codex Provider、图片任务和浏览器界面：
 
 ```bash
 npx playwright install chromium
@@ -207,6 +244,13 @@ cd InUx-Canvas-1.0.2-extracted
 ```
 
 ## Release
+
+### v1.0.3
+
+- 增加统一的 Agent 一键安装器
+- 支持 Codex、Hermes、Zylos 单独安装
+- 支持 `all` 自动检测并配置当前环境中的多个 Agent
+- 增加安装器的隔离测试，验证登录、复制、启用和注册流程
 
 ### v1.0.2
 
