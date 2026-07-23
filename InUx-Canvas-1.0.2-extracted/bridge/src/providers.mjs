@@ -119,22 +119,87 @@ async function readCodexAccessToken(authFile) {
 }
 
 function yamlScalar(value) {
-  const trimmed = String(value || "").trim();
+  const source = String(value || "").trim();
+  let quote = "";
+  let commentAt = -1;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if ((character === '"' || character === "'") && source[index - 1] !== "\\") {
+      quote = quote === character ? "" : quote || character;
+    } else if (
+      character === "#" &&
+      !quote &&
+      (index === 0 || /\s/.test(source[index - 1]))
+    ) {
+      commentAt = index;
+      break;
+    }
+  }
+  const trimmed = source.slice(0, commentAt < 0 ? undefined : commentAt).trim();
+  let scalar = trimmed;
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
-    return trimmed.slice(1, -1);
+    scalar = trimmed.slice(1, -1);
   }
-  return trimmed;
+  return scalar.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) =>
+    Object.hasOwn(process.env, name) ? process.env[name] : match,
+  );
 }
 
-function hermesModelSelection(config) {
+function yamlTopLevelBlock(config, name) {
+  const lines = String(config || "").split(/\r?\n/);
+  const start = lines.findIndex((line) => new RegExp(`^${name}:\\s*(?:#.*)?$`).test(line));
+  if (start < 0) return [];
+  const block = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() && !/^[ \t]/.test(line)) break;
+    block.push(line);
+  }
+  return block;
+}
+
+function yamlModelEntries(lines, list) {
+  const entries = [];
+  let current = {};
+  const flush = () => {
+    const model = yamlScalar(current.model);
+    const provider = yamlScalar(current.provider);
+    if (model) entries.push({ model, provider });
+    current = {};
+  };
+  for (const rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (list && line.startsWith("-")) {
+      flush();
+      line = line.slice(1).trim();
+    }
+    const match = line.match(/^(provider|model):\s*(.+)$/);
+    if (match) current[match[1]] = match[2];
+  }
+  flush();
+  return entries;
+}
+
+function hermesModelSelections(config) {
   const modelBlock = String(config || "").match(/^model:\s*\n((?:[ \t]+.*(?:\n|$))*)/m)?.[1] || "";
-  return {
+  const primary = {
     model: yamlScalar(modelBlock.match(/^\s+default:\s*(.+)$/m)?.[1]),
     provider: yamlScalar(modelBlock.match(/^\s+provider:\s*(.+)$/m)?.[1]),
   };
+  const candidates = [
+    primary,
+    ...yamlModelEntries(yamlTopLevelBlock(config, "fallback_providers"), true),
+    ...yamlModelEntries(yamlTopLevelBlock(config, "fallback_model"), false),
+  ];
+  const seenModels = new Set();
+  return candidates.filter(({ model }) => {
+    if (!model || seenModels.has(model)) return false;
+    seenModels.add(model);
+    return true;
+  });
 }
 
 async function createHermesImageAttachment(imageUrls) {
@@ -256,14 +321,20 @@ export async function createHermesTextProvider({
   timeoutMs = 300_000,
   visionAnalyzer,
 } = {}) {
-  if (!Array.isArray(command) || command.length === 0) {
-    throw new Error("Hermes command must be a non-empty array");
+  if (
+    !Array.isArray(command) ||
+    command.length === 0 ||
+    command.some((part) => typeof part !== "string" || !part.trim())
+  ) {
+    throw new Error("Hermes command must be an array of non-empty strings");
   }
   if (path.isAbsolute(command[0])) {
     await access(command[0], fsConstants.X_OK);
   }
-  const selection = hermesModelSelection(await readFile(configFile, "utf8"));
-  if (!selection.model) throw new Error("Hermes 尚未配置默认文本模型");
+  const selections = hermesModelSelections(await readFile(configFile, "utf8"));
+  const selection = selections[0];
+  if (!selection?.model) throw new Error("Hermes 尚未配置默认文本模型");
+  const selectionByModel = new Map(selections.map((candidate) => [candidate.model, candidate]));
   return {
     id: "hermes-agent",
     capabilities: {
@@ -271,10 +342,12 @@ export async function createHermesTextProvider({
       text: true,
       cancel: true,
     },
-    textModels: [selection.model],
+    textModels: selections.map((candidate) => candidate.model),
     defaultTextModel: selection.model,
     async generateText(payload, { signal } = {}) {
       const model = String(payload.model || selection.model);
+      const requestedSelection = selectionByModel.get(model);
+      if (!requestedSelection) throw new Error(`Hermes 未配置文本模型：${model}`);
       const imageUrls = Array.isArray(payload.imageUrls) ? payload.imageUrls : [];
       let visionSummary = "";
       if (imageUrls.length > 0 && typeof visionAnalyzer === "function") {
@@ -318,9 +391,9 @@ export async function createHermesTextProvider({
               "2",
             ]
           : ["-z", combinedPrompt, "-m", model, "--ignore-rules"];
-        if (selection.provider) args.push("--provider", selection.provider);
+        if (requestedSelection.provider) args.push("--provider", requestedSelection.provider);
         const text = await runHermesText(command, args, { signal, timeoutMs });
-        return { text, model, provider: selection.provider };
+        return { text, model, provider: requestedSelection.provider };
       } finally {
         if (attachment) {
           await rm(attachment.directory, { recursive: true, force: true });

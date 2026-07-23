@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { createBridgeServer, cropDimensions } from "../src/server.mjs";
 import {
@@ -17,6 +19,7 @@ const PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xy4uAAAAAElFTkSuQmCC",
   "base64",
 );
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const RGB_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC";
 const WIDE_ALPHA_PNG_DATA_URL =
@@ -45,6 +48,13 @@ async function listen(server) {
   });
   const { port } = server.address();
   return `http://127.0.0.1:${port}`;
+}
+
+async function unusedPort() {
+  const server = createServer();
+  const baseUrl = await listen(server);
+  await new Promise((resolve) => server.close(resolve));
+  return Number(new URL(baseUrl).port);
 }
 
 async function waitForTask(baseUrl, taskId) {
@@ -2045,6 +2055,85 @@ test("Hermes text provider discovers the configured model without exposing crede
   }
 });
 
+test("Hermes text provider discovers configured fallback models and routes each through its provider", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-fallback-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  await writeFile(
+    configFile,
+    [
+      "model:",
+      "  default: primary-model",
+      "  provider: custom:primary",
+      "fallback_providers:",
+      "  - provider: custom:fallback",
+      "    model: fallback-model",
+      "  - provider: custom:duplicate",
+      "    model: primary-model",
+    ].join("\n"),
+  );
+  const command = [
+    process.execPath,
+    "-e",
+    "process.stdout.write(JSON.stringify(process.argv.slice(1)))",
+    "--",
+  ];
+
+  try {
+    const provider = await createHermesTextProvider({ configFile, command });
+    assert.deepEqual(provider.textModels, ["primary-model", "fallback-model"]);
+    assert.equal(provider.defaultTextModel, "primary-model");
+
+    const result = await provider.generateText({
+      model: "fallback-model",
+      userPrompt: "Use the configured fallback.",
+    });
+    const args = JSON.parse(result.text);
+    assert.equal(args[args.indexOf("-m") + 1], "fallback-model");
+    assert.equal(args[args.indexOf("--provider") + 1], "custom:fallback");
+    assert.equal(result.provider, "custom:fallback");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes text discovery expands environment variables and ignores YAML comments", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-env-test-"));
+  const configFile = path.join(dataDir, "config.yaml");
+  const previousModel = process.env.BEEMAX_TEST_PRIMARY_MODEL;
+  process.env.BEEMAX_TEST_PRIMARY_MODEL = "primary-from-env";
+  await writeFile(
+    configFile,
+    [
+      "model:",
+      "  default: ${BEEMAX_TEST_PRIMARY_MODEL} # selected by deployment",
+      "  provider: custom:primary # safe comment",
+      "fallback_providers:",
+      "  - provider: custom:fallback",
+      "    model: fallback-model # secondary",
+    ].join("\n"),
+  );
+
+  try {
+    const provider = await createHermesTextProvider({
+      configFile,
+      command: [process.execPath, "-e", "process.stdout.write('ok')", "--"],
+    });
+    assert.deepEqual(provider.textModels, ["primary-from-env", "fallback-model"]);
+    assert.deepEqual(
+      await provider.generateText({ model: "primary-from-env", userPrompt: "test" }),
+      { text: "ok", model: "primary-from-env", provider: "custom:primary" },
+    );
+    await assert.rejects(
+      provider.generateText({ model: "not-configured", userPrompt: "test" }),
+      /未配置文本模型/,
+    );
+  } finally {
+    if (previousModel === undefined) delete process.env.BEEMAX_TEST_PRIMARY_MODEL;
+    else process.env.BEEMAX_TEST_PRIMARY_MODEL = previousModel;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("a pre-cancelled Hermes request does not start a provider process", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "beemax-hermes-cancelled-test-"));
   const configFile = path.join(dataDir, "config.yaml");
@@ -2183,6 +2272,134 @@ test("Hermes text provider is not published when its configured executable is mi
     /ENOENT/,
   );
   await rm(root, { recursive: true, force: true });
+});
+
+test("Hermes text provider rejects an empty command segment during startup", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-hermes-empty-command-test-"));
+  const configFile = path.join(root, "config.yaml");
+  await writeFile(configFile, "model:\n  default: glm-test-text\n", "utf8");
+  await assert.rejects(
+    createHermesTextProvider({ configFile, command: [""] }),
+    /non-empty strings/,
+  );
+  await rm(root, { recursive: true, force: true });
+});
+
+test("one-command deployment publishes Hermes text and image models through runtime settings", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-deploy-runtime-test-"));
+  const hermesHome = path.join(root, "hermes");
+  const configFile = path.join(hermesHome, "config.yaml");
+  const python = path.join(root, "hermes-python");
+  const hermesBinDir = path.join(root, "bin");
+  const hermesCli = path.join(hermesBinDir, "hermes");
+  const port = await unusedPort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  await mkdir(hermesHome, { recursive: true });
+  await mkdir(hermesBinDir, { recursive: true });
+  await writeFile(
+    configFile,
+    [
+      "model:",
+      "  default: deployment-primary",
+      "  provider: custom:primary",
+      "fallback_providers:",
+      "  - provider: custom:fallback",
+      "    model: deployment-fallback",
+    ].join("\n"),
+  );
+  await writeFile(
+    python,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "-c" ]; then exit 0; fi',
+      'if [ "$1" = "-m" ] && [ "$3" = "config" ] && [ "$4" = "path" ]; then',
+      '  printf "%s\\n" "$BEEMAX_TEST_HERMES_CONFIG"',
+      "  exit 0",
+      "fi",
+      'case "$1" in',
+      '  */hermes_image_provider.py)',
+      '    printf \'%s\\n\' \'{"success":true,"provider":"openai-codex"}\'',
+      "    exit 0",
+      "    ;;",
+      "esac",
+      "exit 0",
+    ].join("\n"),
+  );
+  await chmod(python, 0o755);
+  await writeFile(hermesCli, `#!${python}\n`);
+  await chmod(hermesCli, 0o755);
+
+  const child = spawn("bash", [path.join(PROJECT_ROOT, "deploy.sh"), "--no-open"], {
+    cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      BEEMAX_BRIDGE_PORT: String(port),
+      BEEMAX_PUBLIC_ORIGIN: baseUrl,
+      BEEMAX_TEST_HERMES_CONFIG: configFile,
+      HERMES_HOME: hermesHome,
+      HERMES_PYTHON: "/usr/bin/false",
+      PATH: `${hermesBinDir}:${process.env.PATH}`,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk;
+  });
+
+  try {
+    const deadline = Date.now() + 5_000;
+    while (!output.includes("Agent Canvas 已启动") && Date.now() < deadline) {
+      if (child.exitCode !== null) throw new Error(output);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.match(output, /已识别 2 个文本模型、1 个生图模型/);
+    const settings = await fetch(`${baseUrl}/api/admin/runtime-settings`).then((response) =>
+      response.json(),
+    );
+    const provider = settings.providers.find((candidate) => candidate.id === "beemax-codex-agent");
+    assert.deepEqual(provider.textModels, ["deployment-primary", "deployment-fallback"]);
+    assert.deepEqual(provider.imageModels, ["gpt-image-2"]);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("close", resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("one-command deployment refuses to report success when Hermes is unavailable", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "beemax-deploy-missing-hermes-test-"));
+  const child = spawn("bash", [path.join(PROJECT_ROOT, "deploy.sh"), "--no-open"], {
+    cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      HERMES_HOME: root,
+      HERMES_PYTHON: "",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk;
+  });
+
+  try {
+    const exitCode = await new Promise((resolve) => child.once("close", resolve));
+    assert.notEqual(exitCode, 0);
+    assert.match(output, /已停止部署以避免页面显示“未配置 AI”/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("completed Bridge tasks remain queryable after the service restarts", async () => {

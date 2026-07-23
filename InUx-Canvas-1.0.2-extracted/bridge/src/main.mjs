@@ -14,12 +14,16 @@ function integerEnv(name, fallback) {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-function parseCommand() {
-  const raw = process.env.BEEMAX_CODEX_PROVIDER_COMMAND_JSON;
+function parseCommand(name) {
+  const raw = process.env[name];
   if (!raw) return undefined;
   const command = JSON.parse(raw);
-  if (!Array.isArray(command) || command.length === 0 || command.some((part) => typeof part !== "string")) {
-    throw new Error("BEEMAX_CODEX_PROVIDER_COMMAND_JSON 必须是非空字符串数组");
+  if (
+    !Array.isArray(command) ||
+    command.length === 0 ||
+    command.some((part) => typeof part !== "string" || !part.trim())
+  ) {
+    throw new Error(`${name} 必须是非空字符串数组`);
   }
   return command;
 }
@@ -64,7 +68,8 @@ const dataDir = process.env.BEEMAX_BRIDGE_DATA_DIR || path.join(dataRoot, "beema
 const publicOrigin = process.env.BEEMAX_PUBLIC_ORIGIN || `http://${host}:${port}`;
 const frontendDir = process.env.BEEMAX_FRONTEND_DIR || "";
 
-const codexCommand = parseCommand();
+const codexCommand = parseCommand("BEEMAX_CODEX_PROVIDER_COMMAND_JSON");
+const hermesCommand = parseCommand("BEEMAX_HERMES_COMMAND_JSON");
 const codexTimeoutMs = integerEnv("BEEMAX_CODEX_TIMEOUT_MS", 300_000);
 const codexProvider = codexCommand
   ? createCommandCodexProvider({
@@ -78,6 +83,8 @@ const providers = [codexProvider];
 try {
   providers.push(
     await createHermesTextProvider({
+      configFile: process.env.BEEMAX_HERMES_CONFIG_FILE || undefined,
+      command: hermesCommand,
       timeoutMs: integerEnv("BEEMAX_HERMES_TIMEOUT_MS", 300_000),
       visionAnalyzer:
         typeof codexProvider.analyzeImages === "function"
