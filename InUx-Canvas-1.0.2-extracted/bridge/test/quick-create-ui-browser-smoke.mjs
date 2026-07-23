@@ -8,6 +8,10 @@ const { command, evaluate, wait } = session;
 try {
   await evaluate(`document.querySelector('.back-button')?.click()`);
   await wait(400);
+  await evaluate(`(() => {
+    const templates = document.querySelector('.quick-create-template-primary');
+    if (templates) templates.open = false;
+  })()`);
 
   const initial = JSON.parse(
     await evaluate(`JSON.stringify({
@@ -16,7 +20,7 @@ try {
       simpleHint: document.querySelector('.quick-create-simple-hint')?.innerText || '',
       moreSettingsOpen: document.querySelector('.quick-create-more-settings')?.open || false,
       templatesOpen: document.querySelector('.quick-create-template-primary')?.open || false,
-      templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent),
+      templateVisible: Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.checkVisibility()),
       templateCount: document.querySelectorAll('.quick-create-template-primary .quick-create-template-card').length,
       templateNames: [...document.querySelectorAll('.quick-create-template-primary .quick-create-template-card strong')].map((node) => node.textContent.trim()),
       templateInsideMore: Boolean(document.querySelector('.quick-create-more-settings .quick-create-template-card')),
@@ -34,14 +38,15 @@ try {
   assert.equal(initial.templatesOpen, false);
   assert.equal(initial.templateVisible, false);
   assert.ok(
-    initial.templateCount > 1,
-    `creation template library should expose multiple templates; found ${initial.templateCount}`,
+    initial.templateCount === 5,
+    `homepage and full template library should expose the same five templates; found ${initial.templateCount}`,
   );
   for (const requiredTemplate of [
     "商业海报定制",
     "中文商业海报",
     "社交媒体封面",
     "商品主图",
+    "短视频镜头",
   ]) {
     assert.ok(
       initial.templateNames.includes(requiredTemplate),
@@ -69,12 +74,12 @@ try {
     true,
   );
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent)`),
+    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.checkVisibility())`),
     true,
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.innerText || ''`),
-    /模板库[\s\S]*4 个/,
+    /模板库[\s\S]*5 个/,
   );
   assert.deepEqual(
     JSON.parse(
@@ -93,11 +98,25 @@ try {
     false,
   );
   assert.equal(
-    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.offsetParent)`),
+    await evaluate(`Boolean(document.querySelector('.quick-create-template-primary .quick-create-template-card')?.checkVisibility())`),
     false,
   );
   await evaluate(`document.querySelector('.quick-create-template-primary > summary')?.click()`);
   await wait(50);
+
+  await evaluate(
+    `document.querySelector('[data-template-id="starter-video-shot"]')?.click()`,
+  );
+  await wait(50);
+  assert.equal(
+    await evaluate(`document.querySelector('.quick-create-type-tab[aria-selected="true"]')?.innerText || ''`),
+    "视频",
+    "video template should switch the homepage creator to video",
+  );
+  assert.match(
+    await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),
+    /镜头缓慢推近/,
+  );
 
   await evaluate(
     `document.querySelector('[data-template-id="starter-social-cover"]')?.click()`,
@@ -280,11 +299,11 @@ try {
   );
   assert.equal(
     await evaluate(`document.querySelectorAll('.quick-create-template-primary .quick-create-template-card').length`),
-    1,
+    5,
   );
   assert.match(
     await evaluate(`document.querySelector('.quick-create-template-primary')?.innerText || ''`),
-    /短视频镜头/,
+    /商业海报定制[\s\S]*中文商业海报[\s\S]*社交媒体封面[\s\S]*商品主图[\s\S]*短视频镜头/,
   );
   await evaluate(
     `document.querySelector('[data-template-id="starter-video-shot"]')?.click()`,
@@ -319,7 +338,7 @@ try {
   );
   assert.match(
     await evaluate(`document.querySelector('.managed-provider-panel')?.innerText || ''`),
-    /新增视频配置/,
+    /新增视频配置|手动添加 API/,
   );
   await evaluate(`document.querySelector('[aria-label="项目首页"]')?.click()`);
   await wait(150);
@@ -327,10 +346,19 @@ try {
   await wait(150);
   assert.equal(
     await evaluate(`document.querySelectorAll('.starter-template-card').length`),
-    4,
+    5,
     "empty template library should offer starter templates",
   );
-  await evaluate(`document.querySelector('.starter-template-card')?.click()`);
+  assert.deepEqual(
+    JSON.parse(
+      await evaluate(`JSON.stringify([...document.querySelectorAll('.starter-template-card strong')].map((node) => node.textContent.trim()))`),
+    ),
+    initial.templateNames,
+    "homepage and full template library should use the same ordered directory",
+  );
+  await evaluate(
+    `[...document.querySelectorAll('.starter-template-card')].find((card) => card.querySelector('strong')?.textContent.trim() === '中文商业海报')?.click()`,
+  );
   await wait(150);
   assert.match(
     await evaluate(`document.querySelector('.quick-create-prompt')?.value || ''`),

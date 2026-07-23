@@ -50344,6 +50344,15 @@ function aD({
         ),
       [y, o],
     ),
+    starterTemplateMatches = (0, v.useMemo)(
+      () =>
+        KE(quickCreateStarterTemplates_, y, [
+          `name`,
+          `description`,
+          `prompt`,
+        ]),
+      [y],
+    ),
     W = (0, v.useMemo)(() => {
       let e = { all: z.length };
       return (
@@ -50920,17 +50929,10 @@ function aD({
                       ),
                     })),
               p &&
-                (U.length === 0
-                  ? y.trim()
-                    ? (0, Q.jsxs)(`div`, {
-                        className: `materials-empty`,
-                        children: [
-                          (0, Q.jsx)($, { name: `apps`, size: 42 }),
-                          (0, Q.jsx)(`p`, { children: `没有匹配的模板` }),
-                          (0, Q.jsx)(`span`, { children: `换个关键词试试看` }),
-                        ],
-                      })
-                    : (0, Q.jsxs)(`section`, {
+                (0, Q.jsxs)(Q.Fragment, {
+                  children: [
+                    starterTemplateMatches.length > 0 &&
+                      (0, Q.jsxs)(`section`, {
                         className: `starter-template-section`,
                         children: [
                           (0, Q.jsxs)(`div`, {
@@ -50947,12 +50949,13 @@ function aD({
                           }),
                           (0, Q.jsx)(`div`, {
                             className: `starter-template-grid`,
-                            children: quickCreateStarterTemplates_.map((e) =>
+                            children: starterTemplateMatches.map((e) =>
                               (0, Q.jsxs)(
                                 `button`,
                                 {
                                   type: `button`,
                                   className: `starter-template-card`,
+                                  "data-template-id": e.id,
                                   onClick: () => useStarterTemplate?.(e),
                                   children: [
                                     (0, Q.jsx)(`span`, {
@@ -50973,10 +50976,11 @@ function aD({
                             children: `之后也可以在画布中收藏自己的工作流模板。`,
                           }),
                         ],
-                      })
-                  : (0, Q.jsx)(`div`, {
-                      className: `materials-grid materials-template-grid`,
-                      children: U.map((e) => {
+                      }),
+                    U.length > 0 &&
+                      (0, Q.jsx)(`div`, {
+                        className: `materials-grid materials-template-grid`,
+                        children: U.map((e) => {
                         let t =
                           e.nodes?.filter((e) => e.type !== `generator`)
                             .length || 0;
@@ -51095,8 +51099,20 @@ function aD({
                           },
                           e.id,
                         );
+                        }),
                       }),
-                    })),
+                    starterTemplateMatches.length === 0 &&
+                      U.length === 0 &&
+                      (0, Q.jsxs)(`div`, {
+                        className: `materials-empty`,
+                        children: [
+                          (0, Q.jsx)($, { name: `apps`, size: 42 }),
+                          (0, Q.jsx)(`p`, { children: `没有匹配的模板` }),
+                          (0, Q.jsx)(`span`, { children: `换个关键词试试看` }),
+                        ],
+                      }),
+                  ],
+                }),
             ],
           }),
         ],
@@ -62851,6 +62867,17 @@ var quickCreateModes_ = Object.freeze([
   }),
   quickCreateStarterTemplates_ = Object.freeze([
     {
+      id: `commercial-poster`,
+      name: quickPosterMaterial_.label,
+      description: quickPosterMaterial_.materialDescription,
+      icon: quickPosterMaterial_.icon,
+      type: `image`,
+      mode: `poster`,
+      aspectRatio: `3:4`,
+      resolution: `1k`,
+      prompt: ``,
+    },
+    {
       id: `starter-product-poster`,
       name: `中文商业海报`,
       description: `适合活动宣传、新品发布和中文品牌传播`,
@@ -62896,6 +62923,7 @@ function normalizeQuickCreateDraft_(e = {}) {
   return {
     type: e.type === `video` ? `video` : `image`,
     prompt: typeof e.prompt == `string` ? e.prompt : ``,
+    mode: e.mode === `poster` ? `poster` : `generate`,
   };
 }
 function readQuickCreateDraft_() {
@@ -62960,7 +62988,7 @@ function QuickCreatePanel_({
 }) {
   let quickDraft = (0, v.useMemo)(readQuickCreateDraft_, []),
     [r, i] = (0, v.useState)(quickDraft.type === `video` ? `video` : `image`),
-    [a, o] = (0, v.useState)(`generate`),
+    [a, o] = (0, v.useState)(quickDraft.mode),
     [s, c] = (0, v.useState)(quickDraft.prompt || ``),
     [l, u] = (0, v.useState)(``),
     [d, f] = (0, v.useState)([]),
@@ -63002,8 +63030,8 @@ function QuickCreatePanel_({
       L && L !== A && j(L);
     }, [L, A]),
     (0, v.useEffect)(() => {
-      writeQuickCreateDraft_({ type: r, prompt: s });
-    }, [r, s]),
+      writeQuickCreateDraft_({ type: r, prompt: s, mode: a });
+    }, [r, s, a]),
     (0, v.useEffect)(() => {
       if (a !== `poster`) return;
       let e = document.body.style.overflow,
@@ -63079,6 +63107,15 @@ function QuickCreatePanel_({
       let t = e.type === `video` ? `video` : `image`,
         n = e.aspectRatio || (t === `video` ? `16:9` : `3:4`),
         r = e.resolution || (t === `video` ? `720p` : `1k`);
+      if (e.mode === `poster`) {
+        (i(`image`),
+          o(`poster`),
+          g(n),
+          y(r),
+          D(`请选择海报风格，应用模板后可继续创作`),
+          T(`success`));
+        return;
+      }
       (i(t),
         o(`generate`),
         c(e.prompt || ``),
@@ -63248,52 +63285,22 @@ function QuickCreatePanel_({
                     children: `模板库`,
                   }),
                   (0, Q.jsx)(`small`, {
-                    children: `${quickCreateStarterTemplates_.filter((e) => e.type === r).length + (r === `image` ? 1 : 0)} 个`,
+                    children: `${quickCreateStarterTemplates_.length} 个`,
                   }),
                 ],
               }),
               (0, Q.jsxs)(`div`, {
                 className: `quick-create-template-grid`,
                 children: [
-                  r === `image` &&
-                    (0, Q.jsxs)(`button`, {
-                      ref: quickPosterShortcutRef,
-                      type: `button`,
-                      className: `quick-create-template-card ${a === `poster` ? `active` : ``}`,
-                      "aria-pressed": a === `poster`,
-                      "data-template-id": `commercial-poster`,
-                      onClick: () => quickSelectMode(quickPosterMaterial_.id),
-                      children: [
-                        (0, Q.jsx)(`span`, {
-                          className: `quick-create-template-card-icon`,
-                          children: (0, Q.jsx)($, {
-                            name: quickPosterMaterial_.icon,
-                            size: 18,
-                          }),
-                        }),
-                        (0, Q.jsxs)(`div`, {
-                          children: [
-                            (0, Q.jsx)(`strong`, {
-                              children: quickPosterMaterial_.label,
-                            }),
-                            (0, Q.jsx)(`span`, {
-                              children: quickPosterMaterial_.materialDescription,
-                            }),
-                          ],
-                        }),
-                        (0, Q.jsx)(`em`, {
-                          children: quickPosterMaterial_.materialAction,
-                        }),
-                      ],
-                    }),
                   ...quickCreateStarterTemplates_
-                    .filter((e) => e.type === r)
                     .map((e) =>
                       (0, Q.jsxs)(
                         `button`,
                         {
                           type: `button`,
                           className: `quick-create-template-card quick-create-starter-template-card`,
+                          ref: e.mode === `poster` ? quickPosterShortcutRef : void 0,
+                          "aria-pressed": e.mode === `poster` ? a === `poster` : void 0,
                           "data-template-id": e.id,
                           onClick: () => quickApplyStarterTemplate(e),
                           children: [
@@ -63307,7 +63314,9 @@ function QuickCreatePanel_({
                                 (0, Q.jsx)(`span`, { children: e.description }),
                               ],
                             }),
-                            (0, Q.jsx)(`em`, { children: `使用模板 →` }),
+                            (0, Q.jsx)(`em`, {
+                              children: e.mode === `poster` ? quickPosterMaterial_.materialAction : `使用模板 →`,
+                            }),
                           ],
                         },
                         e.id,
@@ -64227,7 +64236,7 @@ function hA() {
     (i(e), e !== `canvas` && o(null));
   }, []),
     useStarterTemplate = (0, v.useCallback)((e) => {
-      (writeQuickCreateDraft_({ type: e.type, prompt: e.prompt }), de(`projects`));
+      (writeQuickCreateDraft_({ type: e.type, prompt: e.prompt, mode: e.mode }), de(`projects`));
     }, [de]);
   return e
     ? (0, Q.jsx)(EC, {

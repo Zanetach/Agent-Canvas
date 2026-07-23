@@ -149,6 +149,7 @@ for _ in {1..50}; do
 done
 (( cdp_ready ))
 "$NODE_BIN" "$ROOT_DIR/bridge/test/poster-ui-browser-smoke.mjs" "http://127.0.0.1:$CDP_PORT"
+"$NODE_BIN" "$ROOT_DIR/bridge/test/template-catalog-browser-smoke.mjs" "http://127.0.0.1:$CDP_PORT"
 "$NODE_BIN" "$ROOT_DIR/bridge/test/quick-create-ui-browser-smoke.mjs" "http://127.0.0.1:$CDP_PORT"
 kill "$CDP_PID" >/dev/null 2>&1 || true
 wait "$CDP_PID" >/dev/null 2>&1 || true
