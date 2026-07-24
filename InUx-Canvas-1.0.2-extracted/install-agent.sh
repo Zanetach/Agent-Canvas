@@ -269,6 +269,10 @@ run_all() {
   fi
 
   if [[ "$installed" -eq 0 && "$failed" -eq 0 ]]; then
+    if [[ "${AGENT_CANVAS_ALLOW_NO_AGENTS:-0}" == "1" ]]; then
+      info "没有检测到本机 Agent；已保留通用网关或手动 Provider 配置。"
+      return 0
+    fi
     warn "没有检测到可安装的 Agent。"
     return 1
   fi

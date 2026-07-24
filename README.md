@@ -292,11 +292,33 @@ npm test --prefix integrations/zylos/beemax-canvas
 
 ## 更新
 
+已经安装过的环境，进入项目目录后执行：
+
 ```bash
 cd Agent-Canvas
-git pull --ff-only
-cd InUx-Canvas-1.0.2-extracted
-./start-web.sh
+./update.sh --no-open
+```
+
+更新器会依次检查本地修改、执行 `git pull --ff-only`、更新 Codex/Hermes/Zylos
+集成，并安全重启属于当前仓库的 Canvas 服务。检测到未提交修改、未知端口进程或
+任一更新步骤失败时会停止，不会执行 `reset`、`stash` 或删除本地文件。
+
+仅更新、不重启：
+
+```bash
+./update.sh --no-start
+```
+
+如果服务由 systemd、Docker 或其他进程管理器托管，可把重启命令交给更新器：
+
+```bash
+BEEMAX_UPDATE_RESTART_COMMAND='systemctl --user restart agent-canvas' ./update.sh --no-open
+```
+
+旧版本第一次升级到包含更新器的版本时，先执行一次：
+
+```bash
+cd Agent-Canvas && git pull --ff-only && ./update.sh --no-open
 ```
 
 ## Release

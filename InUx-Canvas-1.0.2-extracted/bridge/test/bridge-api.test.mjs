@@ -2633,6 +2633,7 @@ test("one-command deployment discovers text, image, and video models from a gene
   const gatewayUrl = await listen(gateway);
   const port = await unusedPort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const dataRoot = path.join(root, "data");
   const incompleteHermes = path.join(root, "hermes-python");
   const hermesConfig = path.join(root, "hermes-config.yaml");
   await writeFile(hermesConfig, "model:\n  default: hermes-text-only\n");
@@ -2661,7 +2662,7 @@ test("one-command deployment discovers text, image, and video models from a gene
       CODEX_BIN: "/usr/bin/false",
       HERMES_HOME: path.join(root, "missing-hermes"),
       HERMES_PYTHON: incompleteHermes,
-      INUX_DATA_DIR: path.join(root, "data"),
+      INUX_DATA_DIR: dataRoot,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -2691,9 +2692,17 @@ test("one-command deployment discovers text, image, and video models from a gene
     assert.ok(provider.textModels.includes("hermes-text-only"));
     assert.deepEqual(provider.imageModels, ["deployment-image"]);
     assert.ok(provider.videoModels.includes("deployment-video"));
+    assert.match(
+      await readFile(path.join(dataRoot, "beemax-bridge.pid"), "utf8"),
+      /^\d+\n$/,
+    );
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => child.once("close", resolve));
+    await assert.rejects(
+      readFile(path.join(dataRoot, "beemax-bridge.pid"), "utf8"),
+      (error) => error?.code === "ENOENT",
+    );
     await new Promise((resolve) => gateway.close(resolve));
     await rm(root, { recursive: true, force: true });
   }

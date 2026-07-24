@@ -169,13 +169,20 @@ export BEEMAX_FRONTEND_DIR="$FRONTEND_DIR"
 export BEEMAX_PUBLIC_ORIGIN="$APP_URL"
 export INUX_DATA_DIR="${INUX_DATA_DIR:-$ROOT_DIR/.data}"
 
+PID_FILE="$INUX_DATA_DIR/beemax-bridge.pid"
+mkdir -p "$INUX_DATA_DIR"
 "$NODE_BIN" "$ROOT_DIR/bridge/src/main.mjs" &
 SERVER_PID=$!
 cleanup() {
   kill "$SERVER_PID" >/dev/null 2>&1 || true
   wait "$SERVER_PID" >/dev/null 2>&1 || true
+  if [[ -f "$PID_FILE" && "$(<"$PID_FILE")" == "$SERVER_PID" ]]; then
+    rm -f "$PID_FILE"
+  fi
 }
 trap cleanup EXIT INT TERM
+printf '%s\n' "$SERVER_PID" >"$PID_FILE.$SERVER_PID.tmp"
+mv "$PID_FILE.$SERVER_PID.tmp" "$PID_FILE"
 
 READINESS_ERROR=""
 READINESS_DEADLINE=$((SECONDS + 60))
